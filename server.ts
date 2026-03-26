@@ -16,11 +16,6 @@ const __dirname = path.dirname(__filename);
 // --- Supabase Configuration ---
 const supabaseUrl = process.env.SUPABASE_URL || "";
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables.");
-}
-
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // --- Web Push Configuration ---
@@ -30,15 +25,11 @@ let vapidKeys = {
 };
 
 if (vapidKeys.publicKey && vapidKeys.privateKey) {
-  try {
-    webpush.setVapidDetails(
-      "mailto:yallamha86@gmail.com",
-      vapidKeys.publicKey,
-      vapidKeys.privateKey
-    );
-  } catch (e) {
-    console.error("Failed to set VAPID details. Push notifications may not work.", e);
-  }
+  webpush.setVapidDetails(
+    "mailto:yallamha86@gmail.com",
+    vapidKeys.publicKey,
+    vapidKeys.privateKey
+  );
 }
 
 // --- Push Notifications ---
@@ -46,9 +37,7 @@ const sendPushNotification = async (userId: string | null, title: string, body: 
   try {
     let query = supabase.from("push_subscriptions").select("subscription");
     if (userId) query = query.eq("user_id", userId);
-
     const { data: subscriptions } = await query;
-
     if (subscriptions) {
       subscriptions.forEach(sub => {
         try {
@@ -59,14 +48,10 @@ const sendPushNotification = async (userId: string | null, title: string, body: 
                 await supabase.from("push_subscriptions").delete().eq("subscription", sub.subscription);
               }
             });
-        } catch (e) {
-          console.error("Push error", e);
-        }
+        } catch (e) {}
       });
     }
-  } catch (e) {
-    console.error("Push notification error", e);
-  }
+  } catch (e) {}
 };
 
 // --- Telegram Helpers ---
@@ -80,9 +65,7 @@ const sendTelegramMessage = async (text: string) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: chatId, text }),
     });
-  } catch (e) {
-    console.error("Telegram error", e);
-  }
+  } catch (e) {}
 };
 
 const sendTelegramToUser = async (userId: string, text: string) => {
@@ -96,9 +79,7 @@ const sendTelegramToUser = async (userId: string, text: string) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: user.telegram_chat_id, text }),
     });
-  } catch (e) {
-    console.error("Telegram user notify error", e);
-  }
+  } catch (e) {}
 };
 
 // --- User States for Bot Conversations ---
@@ -177,9 +158,6 @@ async function processBotOrder(chatId: number, user: any, product: any, price: n
   }
 }
 
-// ============================================================
-// START SERVER
-// ============================================================
 // =================== API SYRIA HELPERS ===================
 const APISYRIA_BASE = "https://apisyria.com/api/v1";
 const APISYRIA_KEY = process.env.APISYRIA_API_KEY || "";
@@ -187,12 +165,10 @@ const APISYRIA_KEY = process.env.APISYRIA_API_KEY || "";
 async function apisyriaRequest(params: Record<string, string>): Promise<any> {
   const qs = new URLSearchParams({ ...params, api_key: APISYRIA_KEY }).toString();
   const url = `${APISYRIA_BASE}?${qs}`;
-  console.log("[APISYRIA] Request:", url.replace(APISYRIA_KEY, "***"));
   const res = await fetch(url, {
     headers: { "Accept": "application/json", "X-Api-Key": APISYRIA_KEY }
   });
   const text = await res.text();
-  console.log("[APISYRIA] Response status:", res.status, "body:", text.substring(0, 300));
   try { return JSON.parse(text); } catch { return { success: false, error: text }; }
 }
 
@@ -202,13 +178,11 @@ async function verifySyriatelTx(txNumber: string, gsm: string): Promise<{ found:
     if (data?.success && data?.data?.found) {
       return { found: true, amount: parseFloat(data.data.transaction?.amount || "0") };
     }
-    // try 30 days
     const data2 = await apisyriaRequest({ resource: "syriatel", action: "find_tx", tx: txNumber, gsm, period: "30" });
     if (data2?.success && data2?.data?.found) {
       return { found: true, amount: parseFloat(data2.data.transaction?.amount || "0") };
     }
-    const debugMsg = JSON.stringify(data2 || data).substring(0, 200);
-    return { found: false, debug: debugMsg };
+    return { found: false, debug: JSON.stringify(data2 || data).substring(0, 200) };
   } catch (e: any) { return { found: false, debug: String(e) }; }
 }
 
@@ -223,8 +197,8 @@ async function verifyShamCashTx(txNumber: string, accountAddress: string): Promi
 }
 
 // =================== AHMINIX API HELPERS ===================
-const AHMINIX_BASE = "https://store.ahminix.com/client/api";
-const AHMINIX_TOKEN = process.env.AHMINIX_API_TOKEN || "KBhetab9djTVsRaIrVeSYH0ETDP4SPCLvk2zS1d8s8e15b5-5rJXPmLSlOvm6gSG";
+const AHMINIX_BASE = "https://fastcard1.store/client/api";
+const AHMINIX_TOKEN = process.env.AHMINIX_API_TOKEN || "";
 
 function generateUUIDv4(): string {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
@@ -235,22 +209,8 @@ function generateUUIDv4(): string {
 }
 
 /**
- * يرسل طلب GET إلى Ahminix API
- */
-async function ahminixGet(path: string): Promise<any> {
-  const url = `${AHMINIX_BASE}${path}`;
-  console.log("[AHMINIX] GET:", url);
-  const res = await fetch(url, {
-    headers: { "api-token": AHMINIX_TOKEN, "Accept": "application/json" }
-  });
-  const text = await res.text();
-  console.log("[AHMINIX] Response:", res.status, text.substring(0, 300));
-  try { return JSON.parse(text); } catch { return { error: text }; }
-}
-
-/**
  * يرسل طلب POST لإنشاء طلب في Ahminix API
- * Per API docs: POST /newOrder/{productId}/params?qty=1&playerId=xxx&order_uuid=xxx
+ * وفقاً للتوثيق: POST /newOrder/{productId} مع body يحتوي على qty, playerId, order_uuid
  */
 async function ahminixCreateOrder(
   productId: string,
@@ -258,28 +218,26 @@ async function ahminixCreateOrder(
   playerId: string,
   orderUuid: string
 ): Promise<any> {
-  // بناء query params حسب API docs
-  const params: Record<string, string> = {
+  const url = `${AHMINIX_BASE}/newOrder/${productId}`;
+  console.log("[AHMINIX] POST order URL:", url);
+
+  const payload: any = {
     qty: String(qty),
     order_uuid: orderUuid,
   };
-  // playerId مطلوب فقط إذا كان موجوداً وليس فارغاً
   if (playerId && playerId.trim() !== "") {
-    params.playerId = playerId.trim();
+    payload.playerId = playerId.trim();
   }
 
-  const qs = new URLSearchParams(params).toString();
-  const url = `${AHMINIX_BASE}/newOrder/${productId}/params?${qs}`;
-  console.log("[AHMINIX] POST order URL:", url.replace(AHMINIX_TOKEN, "***"));
-  console.log("[AHMINIX] params:", params);
-
+  console.log("[AHMINIX] Payload:", payload);
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "api-token": AHMINIX_TOKEN,
       "Accept": "application/json",
       "Content-Type": "application/json"
-    }
+    },
+    body: JSON.stringify(payload)
   });
   const text = await res.text();
   console.log("[AHMINIX] Order response:", res.status, text.substring(0, 500));
@@ -290,9 +248,7 @@ async function ahminixCreateOrder(
  * يتحقق من حالة طلب في Ahminix
  */
 async function ahminixCheckOrder(orderId: string, isUuid = false): Promise<any> {
-  const param = isUuid
-    ? `orders=["${orderId}"]&uuid=1`
-    : `orders=[${orderId}]`;
+  const param = isUuid ? `orders=${encodeURIComponent(orderId)}&uuid=1` : `orders=${orderId}`;
   return ahminixGet(`/check?${param}`);
 }
 
@@ -311,6 +267,21 @@ async function ahminixGetProfile(): Promise<any> {
   return ahminixGet("/profile");
 }
 
+/**
+ * يرسل طلب GET إلى Ahminix API
+ */
+async function ahminixGet(path: string): Promise<any> {
+  const url = `${AHMINIX_BASE}${path}`;
+  console.log("[AHMINIX] GET:", url);
+  const res = await fetch(url, {
+    headers: { "api-token": AHMINIX_TOKEN, "Accept": "application/json" }
+  });
+  const text = await res.text();
+  console.log("[AHMINIX] Response:", res.status, text.substring(0, 300));
+  try { return JSON.parse(text); } catch { return { error: text }; }
+}
+
+// ------------------- START SERVER -------------------
 async function startServer() {
   const app = express();
   app.use(express.json());
@@ -324,7 +295,6 @@ async function startServer() {
   });
 
   // =================== API ROUTES ===================
-
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
@@ -404,7 +374,6 @@ async function startServer() {
     }
   });
 
-
   app.get("/api/subcategories/:id/sub-sub-categories", async (req, res) => {
     try {
       const { data, error } = await supabase.from("sub_sub_categories").select("*").eq("subcategory_id", req.params.id).eq("active", true).order("order_index");
@@ -466,7 +435,6 @@ async function startServer() {
   });
 
   // =================== AUTH ===================
-
   app.post("/api/auth/register", async (req, res) => {
     const { name, email, password, phone, referralCode } = req.body;
     try {
@@ -480,10 +448,7 @@ async function startServer() {
       let referredById = null;
       if (referralCode) {
         const { data: referrer } = await supabase.from("users").select("id").eq("personal_number", referralCode).single();
-        if (referrer) {
-          referredById = referrer.id;
-          await supabase.rpc("increment_referral_count", { user_id_param: referrer.id });
-        }
+        if (referrer) referredById = referrer.id;
       }
 
       const salt = await bcrypt.genSalt(10);
@@ -542,1652 +507,1522 @@ async function startServer() {
     }
     res.status(401).json({ error: "Invalid credentials" });
   });
-
   // =================== USER ROUTES ===================
-
-  app.get("/api/user/:id", async (req, res) => {
-    try {
-      const { data: user, error } = await supabase.from("users").select("*").eq("id", req.params.id).single();
-      if (error) throw error;
-      if (!user) return res.status(404).json({ error: "User not found" });
-      const { password_hash, ...userWithoutPass } = user;
-      let { data: stats } = await supabase.from("user_stats").select("*").eq("user_id", user.id).single();
-      if (!stats) {
-        await supabase.from("user_stats").insert({ user_id: user.id });
-        const { data: newStats } = await supabase.from("user_stats").select("*").eq("user_id", user.id).single();
-        stats = newStats;
-      }
-      const safeStats = stats || { user_id: user.id, total_orders_count: 0, referral_count: 0, login_days_count: 0, total_recharge_sum: 0, active_discount: 0, claimed_reward_index: -1, one_product_discount_percent: 0, has_flaming_theme: false, has_special_support: false, has_priority_orders: false, profile_badge: null, custom_theme_color: null };
-      res.json({ ...userWithoutPass, stats: safeStats });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
+app.get("/api/user/:id", async (req, res) => {
+  try {
+    const { data: user, error } = await supabase.from("users").select("*").eq("id", req.params.id).single();
+    if (error) throw error;
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const { password_hash, ...userWithoutPass } = user;
+    let { data: stats } = await supabase.from("user_stats").select("*").eq("user_id", user.id).single();
+    if (!stats) {
+      await supabase.from("user_stats").insert({ user_id: user.id });
+      const { data: newStats } = await supabase.from("user_stats").select("*").eq("user_id", user.id).single();
+      stats = newStats;
     }
-  });
+    const safeStats = stats || { user_id: user.id, total_orders_count: 0, referral_count: 0, login_days_count: 0, total_recharge_sum: 0, active_discount: 0, claimed_reward_index: -1, one_product_discount_percent: 0, has_flaming_theme: false, has_special_support: false, has_priority_orders: false, profile_badge: null, custom_theme_color: null };
+    res.json({ ...userWithoutPass, stats: safeStats });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-  app.post("/api/user/:userId/avatar", async (req, res) => {
-    try {
-      const { avatarUrl } = req.body;
-      await supabase.from("users").update({ avatar_url: avatarUrl }).eq("id", req.params.userId);
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
+app.post("/api/user/:userId/avatar", async (req, res) => {
+  try {
+    const { avatarUrl } = req.body;
+    await supabase.from("users").update({ avatar_url: avatarUrl }).eq("id", req.params.userId);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.patch("/api/user/:id/avatar", async (req, res) => {
+  try {
+    const { avatar_url } = req.body;
+    if (!avatar_url) return res.status(400).json({ error: "Missing avatar URL" });
+    await supabase.from("users").update({ avatar_url }).eq("id", req.params.id);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/user/update", async (req, res) => {
+  try {
+    const { userId, name, phone } = req.body;
+    await supabase.from("users").update({ name, phone }).eq("id", userId);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/user/unlink-telegram", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    await supabase.from("users").update({ telegram_chat_id: null }).eq("id", userId);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/user/generate-linking-code", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    const { error } = await supabase.from("telegram_linking_codes").insert({ user_id: userId, code, expires_at: expiresAt });
+    if (error) throw error;
+    res.json({ code });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/user/update-theme", async (req, res) => {
+  try {
+    const { userId, color } = req.body;
+    await supabase.from("user_stats").update({ custom_theme_color: color }).eq("user_id", userId);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// =================== REFERRALS ===================
+app.get("/api/referrals/stats/:userId", async (req, res) => {
+  try {
+    const { data: referrals, error } = await supabase.from("users").select("id, name, created_at").eq("referred_by_id", req.params.userId);
+    if (error) throw error;
+    res.json({ count: referrals?.length || 0, referrals: referrals || [] });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// =================== NOTIFICATIONS ===================
+app.get("/api/notifications/:userId", async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("notifications").select("*")
+      .or(`user_id.eq.${req.params.userId},user_id.is.null`)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    res.json(Array.isArray(data) ? data : []);
+  } catch (e: any) {
+    res.json([]);
+  }
+});
+
+app.post("/api/notifications/mark-read", async (req, res) => {
+  try {
+    const { notificationId } = req.body;
+    await supabase.from("notifications").update({ is_read: true }).eq("id", notificationId);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// =================== PUSH SUBSCRIPTIONS ===================
+app.get("/api/push/key", (req, res) => {
+  res.json({ publicKey: vapidKeys.publicKey });
+});
+
+app.post("/api/push/subscribe", async (req, res) => {
+  try {
+    const { userId, subscription } = req.body;
+    const subStr = JSON.stringify(subscription);
+    const { data: existing } = await supabase.from("push_subscriptions").select("id").eq("user_id", userId).eq("subscription", subStr).single();
+    if (!existing) {
+      await supabase.from("push_subscriptions").insert({ user_id: userId, subscription: subStr });
     }
-  });
-
-  app.patch("/api/user/:id/avatar", async (req, res) => {
-    try {
-      const { avatar_url } = req.body;
-      if (!avatar_url) return res.status(400).json({ error: "Missing avatar URL" });
-      await supabase.from("users").update({ avatar_url }).eq("id", req.params.id);
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post("/api/user/update", async (req, res) => {
-    try {
-      const { userId, name, phone } = req.body;
-      await supabase.from("users").update({ name, phone }).eq("id", userId);
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post("/api/user/unlink-telegram", async (req, res) => {
-    try {
-      const { userId } = req.body;
-      await supabase.from("users").update({ telegram_chat_id: null }).eq("id", userId);
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post("/api/user/generate-linking-code", async (req, res) => {
-    try {
-      const { userId } = req.body;
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-      const { error } = await supabase.from("telegram_linking_codes").insert({ user_id: userId, code, expires_at: expiresAt });
-      if (error) throw error;
-      res.json({ code });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post("/api/user/update-theme", async (req, res) => {
-    try {
-      const { userId, color } = req.body;
-      await supabase.from("user_stats").update({ custom_theme_color: color }).eq("user_id", userId);
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  // =================== REFERRALS ===================
-
-  app.get("/api/referrals/stats/:userId", async (req, res) => {
-    try {
-      const { data: referrals, error } = await supabase.from("users").select("id, name, created_at").eq("referred_by_id", req.params.userId);
-      if (error) throw error;
-      res.json({ count: referrals?.length || 0, referrals: referrals || [] });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  // =================== NOTIFICATIONS ===================
-
-  app.get("/api/notifications/:userId", async (req, res) => {
-    try {
-      const { data, error } = await supabase.from("notifications").select("*")
-        .or(`user_id.eq.${req.params.userId},user_id.is.null`)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      res.json(Array.isArray(data) ? data : []);
-    } catch (e: any) {
-      res.json([]); // always array
-    }
-  });
-
-  app.post("/api/notifications/mark-read", async (req, res) => {
-    try {
-      const { notificationId } = req.body;
-      await supabase.from("notifications").update({ is_read: true }).eq("id", notificationId);
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  // =================== PUSH SUBSCRIPTIONS ===================
-
-  app.get("/api/push/key", (req, res) => {
-    res.json({ publicKey: vapidKeys.publicKey });
-  });
-
-  app.post("/api/push/subscribe", async (req, res) => {
-    try {
-      const { userId, subscription } = req.body;
-      const subStr = JSON.stringify(subscription);
-      const { data: existing } = await supabase.from("push_subscriptions").select("id").eq("user_id", userId).eq("subscription", subStr).single();
-      if (!existing) {
-        await supabase.from("push_subscriptions").insert({ user_id: userId, subscription: subStr });
-      }
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
   // =================== ORDERS ===================
+app.post("/api/orders", async (req, res) => {
+  try {
+    const { userId, productId, quantity, extraData } = req.body;
+    const { data: user, error: uErr } = await supabase.from("users").select("*").eq("id", userId).single();
+    if (uErr) throw uErr;
+    const { data: product, error: pErr } = await supabase.from("products").select("*").eq("id", productId).single();
+    if (pErr) throw pErr;
 
-  app.post("/api/orders", async (req, res) => {
-    try {
-      const { userId, productId, quantity, extraData } = req.body;
-      const { data: user, error: uErr } = await supabase.from("users").select("*").eq("id", userId).single();
-      if (uErr) throw uErr;
-      const { data: product, error: pErr } = await supabase.from("products").select("*").eq("id", productId).single();
-      if (pErr) throw pErr;
+    if (!user || !product) return res.status(404).json({ error: "Not found" });
 
-      if (!user || !product) return res.status(404).json({ error: "Not found" });
+    // حساب السعر الصحيح حسب نوع المتجر
+    const unitPrice = product.store_type === 'quantities' || product.store_type === 'external_api'
+      ? (parseFloat(product.price_per_unit) || parseFloat(product.price) || 0)
+      : (parseFloat(product.price) || 0);
+    let total = unitPrice * (Number(quantity) || 1);
 
-      // حساب السعر الصحيح حسب نوع المتجر
-      const unitPrice = product.store_type === 'quantities' || product.store_type === 'external_api'
-        ? (parseFloat(product.price_per_unit) || parseFloat(product.price) || 0)
-        : (parseFloat(product.price) || 0);
-      let total = unitPrice * (Number(quantity) || 1);
+    const { data: stats } = await supabase.from("user_stats").select("*").eq("user_id", userId).single();
+    let discountPercent = user.is_vip ? 5 : 0;
 
-      const { data: stats } = await supabase.from("user_stats").select("*").eq("user_id", userId).single();
-      let discountPercent = user.is_vip ? 5 : 0;
+    if (stats) {
+      if (stats.discount_expires_at && new Date(stats.discount_expires_at) > new Date()) {
+        discountPercent = Math.max(discountPercent, stats.active_discount || 0);
+      }
+      if (stats.one_product_discount_percent > 0) {
+        discountPercent = Math.max(discountPercent, stats.one_product_discount_percent);
+        await supabase.from("user_stats").update({ one_product_discount_percent: 0 }).eq("user_id", userId);
+      }
+    }
 
-      if (stats) {
-        if (stats.discount_expires_at && new Date(stats.discount_expires_at) > new Date()) {
-          discountPercent = Math.max(discountPercent, stats.active_discount || 0);
-        }
-        if (stats.one_product_discount_percent > 0) {
-          discountPercent = Math.max(discountPercent, stats.one_product_discount_percent);
-          await supabase.from("user_stats").update({ one_product_discount_percent: 0 }).eq("user_id", userId);
-        }
+    if (discountPercent > 0) total *= (1 - discountPercent / 100);
+    if (user.balance < total) return res.status(400).json({ error: "Insufficient balance" });
+
+    // =================== CHECK ORDER MODE (AUTO vs MANUAL) ===================
+    const { data: orderModeSetting } = await supabase.from("settings").select("value").eq("key", "order_processing_mode").single();
+    const orderMode = orderModeSetting?.value || "manual";
+
+    let ahminixOrderId: string | null = null;
+    let ahminixOrderStatus: string | null = null;
+    let ahminixReplayApi: any[] = [];
+
+    // =================== EXTERNAL API ORDER ===================
+    const hasExternalId = product.external_id && String(product.external_id).trim() !== "";
+    if (hasExternalId && orderMode === 'auto') {
+      if (!AHMINIX_TOKEN) {
+        return res.status(500).json({ error: "AHMINIX_API_TOKEN غير مضبوط في المتغيرات البيئية" });
       }
 
-      if (discountPercent > 0) total *= (1 - discountPercent / 100);
-      if (user.balance < total) return res.status(400).json({ error: "Insufficient balance" });
+      const playerId = (
+        extraData?.playerId ||
+        extraData?.input ||
+        extraData?.userId ||
+        extraData?.gameId ||
+        extraData?.accountId ||
+        ""
+      ).toString().trim();
 
-      // =================== CHECK ORDER MODE (AUTO vs MANUAL) ===================
-      // نقرأ وضع معالجة الطلبات من الإعدادات
-      const { data: orderModeSetting } = await supabase.from("settings").select("value").eq("key", "order_processing_mode").single();
-      const orderMode = orderModeSetting?.value || "manual"; // 'auto' or 'manual'
+      const uuid = generateUUIDv4();
+      const orderUuid = uuid;
+      const qty = Math.max(1, Number(quantity) || 1);
 
-      let ahminixOrderId: string | null = null;
-      let ahminixOrderStatus: string | null = null;
-      let ahminixReplayApi: any[] = [];
+      console.log(`[API] Creating Ahminix order: product_ext_id=${product.external_id}, qty=${qty}, playerId="${playerId}", uuid=${orderUuid}`);
 
-      // =================== EXTERNAL API ORDER ===================
-      const hasExternalId = product.external_id && String(product.external_id).trim() !== "";
-      if (hasExternalId && orderMode === 'auto') {
-        // AHMINIX_TOKEN is always available via fallback
+      const ahminixRes = await ahminixCreateOrder(
+        String(product.external_id).trim(),
+        qty,
+        playerId,
+        orderUuid
+      );
 
-        // استخراج playerId من كل المصادر الممكنة
-        const playerId = (
-          extraData?.playerId ||
-          extraData?.input ||
-          extraData?.userId ||
-          extraData?.gameId ||
-          extraData?.accountId ||
-          ""
-        ).toString().trim();
-
-        // توليد UUID v4 فريد
-        const uuid = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-          const r = Math.random() * 16 | 0;
-          return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
-        });
-        const orderUuid = `${uuid}`;
-        const qty = Math.max(1, Number(quantity) || 1);
-
-        console.log(`[API] Creating Ahminix order: product_ext_id=${product.external_id}, qty=${qty}, playerId="${playerId}", uuid=${orderUuid}`);
-
-        const ahminixRes = await ahminixCreateOrder(
-          String(product.external_id).trim(),
-          qty,
-          playerId,
-          orderUuid
-        );
-
-        if (!ahminixRes || ahminixRes.status !== "OK") {
-          const errorCodes: Record<number, string> = {
-            120: "رمز API مطلوب",
-            121: "خطأ في رمز API",
-            122: "غير مسموح باستخدام API",
-            123: "عنوان IP غير مسموح به",
-            130: "الموقع قيد الصيانة",
-            100: "رصيد API غير كافٍ",
-            105: "الكمية غير متوفرة",
-            106: "الكمية غير مسموح بها",
-            112: "الكمية صغيرة جداً",
-            113: "الكمية كبيرة جداً",
-            114: "معلمة غير صالحة - تحقق من بيانات اللاعب أو الـ Player ID",
-            500: "خطأ غير معروف"
-          };
-          const code = ahminixRes?.code || ahminixRes?.error_code;
-          const errMsg = (code && errorCodes[code]) || ahminixRes?.message || ahminixRes?.error || "فشل الطلب لدى المورد";
-          console.error("[API] Order failed:", JSON.stringify(ahminixRes));
-          // إعادة الرصيد ورفض الطلب بدل الحفظ بحالة فاشلة
-          return res.status(400).json({ error: `فشل الطلب: ${errMsg}`, details: ahminixRes });
-        } else {
-          ahminixOrderId = ahminixRes.data?.order_id || null;
-          ahminixOrderStatus = ahminixRes.data?.status || "processing";
-          ahminixReplayApi = ahminixRes.data?.replay_api || [];
-          console.log(`[API] Order created: ${ahminixOrderId}, status: ${ahminixOrderStatus}`);
-        }
-      }
-      // ====================================================================
-
-      // تحديد حالة الطلب بناءً على الوضع والنتيجة
-      let initialStatus: string;
-      if (hasExternalId && orderMode === 'auto') {
-        initialStatus = ahminixOrderStatus === 'accept' ? 'completed' : 'processing';
-      } else if (hasExternalId && orderMode === 'manual') {
-        initialStatus = 'pending_admin';
-      } else if (product.store_type === 'external_api') {
-        initialStatus = orderMode === 'auto' ? 'processing' : 'pending_admin';
+      if (!ahminixRes || ahminixRes.status !== "OK") {
+        const errorCodes: Record<number, string> = {
+          120: "رمز API مطلوب",
+          121: "خطأ في رمز API",
+          122: "غير مسموح باستخدام API",
+          123: "عنوان IP غير مسموح به",
+          130: "الموقع قيد الصيانة",
+          100: "رصيد API غير كافٍ",
+          105: "الكمية غير متوفرة",
+          106: "الكمية غير مسموح بها",
+          112: "الكمية صغيرة جداً",
+          113: "الكمية كبيرة جداً",
+          114: "معلمة غير صالحة - تحقق من بيانات اللاعب أو الـ Player ID",
+          500: "خطأ غير معروف"
+        };
+        const code = ahminixRes?.code || ahminixRes?.error_code;
+        const errMsg = (code && errorCodes[code]) || ahminixRes?.message || ahminixRes?.error || "فشل الطلب لدى المورد";
+        console.error("[API] Order failed:", JSON.stringify(ahminixRes));
+        return res.status(400).json({ error: `فشل الطلب: ${errMsg}`, details: ahminixRes });
       } else {
-        initialStatus = 'pending';
+        ahminixOrderId = ahminixRes.data?.order_id || null;
+        ahminixOrderStatus = ahminixRes.data?.status || "processing";
+        ahminixReplayApi = ahminixRes.data?.replay_api || [];
+        console.log(`[API] Order created: ${ahminixOrderId}, status: ${ahminixOrderStatus}`);
       }
+    }
 
-      // حفظ الطلب في قاعدة البيانات المحلية
-      const metaData = {
-        ...extraData,
-        order_mode: orderMode,
-        ...(ahminixOrderId ? {
-          ahminix_order_id: ahminixOrderId,
-          ahminix_status: ahminixOrderStatus,
-          ahminix_replay: ahminixReplayApi
-        } : {})
+    let initialStatus: string;
+    if (hasExternalId && orderMode === 'auto') {
+      initialStatus = ahminixOrderStatus === 'accept' ? 'completed' : 'processing';
+    } else if (hasExternalId && orderMode === 'manual') {
+      initialStatus = 'pending_admin';
+    } else if (product.store_type === 'external_api') {
+      initialStatus = orderMode === 'auto' ? 'processing' : 'pending_admin';
+    } else {
+      initialStatus = 'pending';
+    }
+
+    const metaData = {
+      ...extraData,
+      order_mode: orderMode,
+      ...(ahminixOrderId ? {
+        ahminix_order_id: ahminixOrderId,
+        ahminix_status: ahminixOrderStatus,
+        ahminix_replay: ahminixReplayApi
+      } : {})
+    };
+
+    const { data: order, error: orderErr } = await supabase.from("orders").insert({
+      user_id: userId,
+      total_amount: total,
+      meta: JSON.stringify(metaData),
+      status: initialStatus
+    }).select().single();
+    if (orderErr) throw orderErr;
+
+    await supabase.from("order_items").insert({
+      order_id: order.id,
+      product_id: productId,
+      price_at_purchase: product.price,
+      quantity,
+      extra_data: JSON.stringify(metaData)
+    });
+
+    await supabase.from("users").update({ balance: user.balance - total }).eq("id", userId);
+
+    if (user.referred_by_id) {
+      const commission = total * 0.05;
+      await supabase.rpc("increment_balance", { user_id_param: user.referred_by_id, amount_param: commission });
+    }
+
+    const orderTypeLabel = orderMode === 'auto' ? '🌐 طلب تلقائي' : '⏳ طلب ينتظر الموافقة';
+    const externalInfo = ahminixOrderId ? `\nAPI Order ID: ${ahminixOrderId}\nStatus: ${ahminixOrderStatus}` : '';
+    sendTelegramMessage(`${orderTypeLabel} #ORD${order.id}\nالاسم: ${user.name}\nProduct: ${product.name}\nTotal: ${total}${externalInfo}`);
+
+    const adminChatId = process.env.TELEGRAM_CHAT_ID;
+    if (adminChatId && adminBot) {
+      adminBot.sendMessage(adminChatId, `${orderTypeLabel} #ORD${order.id}\nالاسم: ${user.name}\nالرقم الشخصي: ${user.personal_number}\nProduct: ${product.name}\nTotal: ${total}\nData: ${JSON.stringify(metaData)}${externalInfo}${orderMode === 'manual' ? '\n\n⚠️ يحتاج موافقتك من لوحة التحكم' : ''}`);
+    }
+
+    res.json({
+      success: true,
+      orderId: order.id,
+      orderMode,
+      pendingAdmin: initialStatus === 'pending_admin',
+      ...(ahminixOrderId ? {
+        externalOrderId: ahminixOrderId,
+        externalStatus: ahminixOrderStatus,
+        replayApi: ahminixReplayApi
+      } : {})
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/orders/user/:userId", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select(`
+        *,
+        order_items(
+          *,
+          products(
+            name, image_url, store_type,
+            subcategories(
+              name,
+              categories(name)
+            )
+          )
+        )
+      `)
+      .eq("user_id", req.params.userId)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+
+    const enriched = (data || []).map((order: any) => {
+      const item = order.order_items?.[0];
+      const product = item?.products;
+      return {
+        ...order,
+        product_name: product?.name || "منتج محذوف",
+        category_name: product?.subcategories?.categories?.name || null,
+        subcategory_name: product?.subcategories?.name || null,
       };
+    });
 
-      const { data: order, error: orderErr } = await supabase.from("orders").insert({
-        user_id: userId,
-        total_amount: total,
-        meta: JSON.stringify(metaData),
-        status: initialStatus
-      }).select().single();
-      if (orderErr) throw orderErr;
+    res.json(enriched);
+  } catch (e: any) {
+    res.json([]);
+  }
+});
 
-      await supabase.from("order_items").insert({
-        order_id: order.id,
-        product_id: productId,
-        price_at_purchase: product.price,
-        quantity,
-        extra_data: JSON.stringify(metaData)
-      });
+// =================== AHMINIX ADMIN ENDPOINTS ===================
+app.get("/api/admin/ahminix/profile", async (req, res) => {
+  try {
+    if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط" });
+    const data = await ahminixGetProfile();
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-      // خصم الرصيد
-      await supabase.from("users").update({ balance: user.balance - total }).eq("id", userId);
+app.get("/api/admin/ahminix/products", async (req, res) => {
+  try {
+    if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط" });
+    const products = await ahminixGetProducts();
+    res.json({ status: "OK", count: products.length, products });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-      // عمولة الإحالة 5%
-      if (user.referred_by_id) {
-        const commission = total * 0.05;
-        await supabase.rpc("increment_balance", { user_id_param: user.referred_by_id, amount_param: commission });
-      }
+app.post("/api/admin/ahminix/sync", async (req, res) => {
+  try {
+    if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط" });
 
-      // إشعار تلجرام
-      const orderTypeLabel = orderMode === 'auto' ? '🌐 طلب تلقائي' : '⏳ طلب ينتظر الموافقة';
-      const externalInfo = ahminixOrderId ? `\nAPI Order ID: ${ahminixOrderId}\nStatus: ${ahminixOrderStatus}` : '';
-      sendTelegramMessage(`${orderTypeLabel} #ORD${order.id}\nالاسم: ${user.name}\nProduct: ${product.name}\nTotal: ${total}${externalInfo}`);
+    const { subcategoryId, subSubCategoryId, productIds, markupPercent = 0, productOverrides = [] } = req.body;
+    if (!subcategoryId) return res.status(400).json({ error: "subcategoryId مطلوب" });
 
-      const adminChatId = process.env.TELEGRAM_CHAT_ID;
-      if (adminChatId && adminBot) {
-        adminBot.sendMessage(adminChatId, `${orderTypeLabel} #ORD${order.id}\nالاسم: ${user.name}\nالرقم الشخصي: ${user.personal_number}\nProduct: ${product.name}\nTotal: ${total}\nData: ${JSON.stringify(metaData)}${externalInfo}${orderMode === 'manual' ? '\n\n⚠️ يحتاج موافقتك من لوحة التحكم' : ''}`);
-      }
-
-      res.json({
-        success: true,
-        orderId: order.id,
-        orderMode,
-        pendingAdmin: initialStatus === 'pending_admin',
-        ...(ahminixOrderId ? {
-          externalOrderId: ahminixOrderId,
-          externalStatus: ahminixOrderStatus,
-          replayApi: ahminixReplayApi
-        } : {})
-      });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
+    const overridesMap: Record<number, { price?: string; image_url?: string }> = {};
+    for (const o of productOverrides) {
+      if (o.id) overridesMap[o.id] = o;
     }
-  });
 
-  app.get("/api/orders/user/:userId", async (req, res) => {
-    try {
-      const { data, error } = await supabase
-        .from("orders")
-        .select(`
-          *,
-          order_items(
-            *,
-            products(
-              name, image_url, store_type,
-              subcategories(
-                name,
-                categories(name)
-              )
-            )
-          )
-        `)
-        .eq("user_id", req.params.userId)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
+    const ahminixProducts = await ahminixGetProducts();
+    if (!ahminixProducts.length) return res.status(400).json({ error: "لم يتم جلب أي منتجات" });
 
-      // flatten to add product_name, category_name, subcategory_name at top level
-      const enriched = (data || []).map((order: any) => {
-        const item = order.order_items?.[0];
-        const product = item?.products;
-        return {
-          ...order,
-          product_name: product?.name || "منتج محذوف",
-          category_name: product?.subcategories?.categories?.name || null,
-          subcategory_name: product?.subcategories?.name || null,
+    const toSync = productIds?.length
+      ? ahminixProducts.filter((p: any) => productIds.includes(p.id))
+      : ahminixProducts;
+
+    let added = 0, updated = 0, skipped = 0;
+    const errors: string[] = [];
+
+    for (const ap of toSync) {
+      try {
+        const override = overridesMap[ap.id] || {};
+        const basePrice = parseFloat(ap.price) || 0;
+
+        const finalPrice = override.price && parseFloat(override.price) > 0
+          ? parseFloat(parseFloat(override.price).toFixed(6))
+          : parseFloat((basePrice * (1 + markupPercent / 100)).toFixed(6));
+
+        const { data: existing } = await supabase
+          .from("products")
+          .select("id")
+          .eq("external_id", String(ap.id))
+          .maybeSingle();
+
+        const productData: any = {
+          name: ap.name,
+          price: finalPrice,
+          price_per_unit: finalPrice,
+          description: ap.category_name || "",
+          store_type: "external_api",
+          requires_input: ap.params && ap.params.length > 0,
+          available: ap.available !== false,
+          external_id: String(ap.id),
+          subcategory_id: subcategoryId,
+          sub_sub_category_id: subSubCategoryId || null,
+          min_quantity: ap.qty_values?.min || 1,
+          image_url: override.image_url || ""
         };
-      });
-
-      res.json(enriched);
-    } catch (e: any) {
-      res.json([]);
-    }
-  });
-
-  // =================== AHMINIX ADMIN ENDPOINTS ===================
-
-  /**
-   * GET /api/admin/ahminix/profile
-   * يجلب رصيد ومعلومات حساب Ahminix
-   */
-  app.get("/api/admin/ahminix/profile", async (req, res) => {
-    try {
-      if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط في .env" });
-      const data = await ahminixGetProfile();
-      res.json(data);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  /**
-   * GET /api/admin/ahminix/products
-   * يجلب كل المنتجات من Ahminix API
-   */
-  app.get("/api/admin/ahminix/products", async (req, res) => {
-    try {
-      if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط في .env" });
-      const products = await ahminixGetProducts();
-      res.json({ status: "OK", count: products.length, products });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  /**
-   * POST /api/admin/ahminix/sync
-   * يزامن منتجات Ahminix إلى قاعدة البيانات المحلية
-   * Body: { subcategoryId, productIds?: number[], markupPercent?: number }
-   *   subcategoryId: القسم الفرعي الذي سيُضاف إليه المنتجات
-   *   productIds: قائمة بمعرفات Ahminix للمنتجات المراد استيرادها (اختياري - إذا فارغة يستورد الكل)
-   *   markupPercent: نسبة الربح تضاف على سعر Ahminix (افتراضي 0)
-   */
-  app.post("/api/admin/ahminix/sync", async (req, res) => {
-    try {
-      if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط في .env" });
-
-      const { subcategoryId, productIds, markupPercent = 0, productOverrides = [] } = req.body;
-      if (!subcategoryId) return res.status(400).json({ error: "subcategoryId مطلوب" });
-
-      // بناء خريطة التخصيصات (سعر مخصص + صورة مخصصة لكل منتج)
-      const overridesMap: Record<number, { price?: string; image_url?: string }> = {};
-      for (const o of productOverrides) {
-        if (o.id) overridesMap[o.id] = o;
-      }
-
-      // جلب منتجات API
-      const ahminixProducts = await ahminixGetProducts();
-      if (!ahminixProducts.length) return res.status(400).json({ error: "لم يتم جلب أي منتجات" });
-
-      const toSync = productIds?.length
-        ? ahminixProducts.filter((p: any) => productIds.includes(p.id))
-        : ahminixProducts;
-
-      let added = 0, updated = 0, skipped = 0;
-      const errors: string[] = [];
-
-      for (const ap of toSync) {
-        try {
-          const override = overridesMap[ap.id] || {};
-          const basePrice = parseFloat(ap.price) || 0;
-
-          // السعر: مخصص يدوياً أو محسوب بنسبة الربح
-          const finalPrice = override.price && parseFloat(override.price) > 0
-            ? parseFloat(parseFloat(override.price).toFixed(6))
-            : parseFloat((basePrice * (1 + markupPercent / 100)).toFixed(6));
-
-          const { data: existing } = await supabase
-            .from("products")
-            .select("id")
-            .eq("external_id", String(ap.id))
-            .maybeSingle();
-
-          const productData: any = {
-            name: ap.name,
-            price: finalPrice,
-            price_per_unit: finalPrice,
-            description: ap.category_name || "",
-            store_type: "external_api",
-            requires_input: ap.params && ap.params.length > 0,
-            available: ap.available !== false,
-            external_id: String(ap.id),
-            subcategory_id: subcategoryId,
-            min_quantity: ap.qty_values?.min || 1,
-            image_url: override.image_url || ""
+                if (existing) {
+          const updateData: any = {
+            name: productData.name,
+            price: productData.price,
+            price_per_unit: productData.price_per_unit,
+            available: productData.available,
+            min_quantity: productData.min_quantity,
+            sub_sub_category_id: productData.sub_sub_category_id
           };
-
-          if (existing) {
-            const updateData: any = {
-              name: productData.name,
-              price: productData.price,
-              price_per_unit: productData.price_per_unit,
-              available: productData.available,
-              min_quantity: productData.min_quantity
-            };
-            // تحديث الصورة فقط إذا كانت مخصصة
-            if (override.image_url) updateData.image_url = override.image_url;
-            await supabase.from("products").update(updateData).eq("id", existing.id);
-            updated++;
-          } else {
-            // إضافة منتج جديد
-            const { error: insErr } = await supabase.from("products").insert(productData);
-            if (insErr) { errors.push(`${ap.name}: ${insErr.message}`); skipped++; }
-            else added++;
-          }
-        } catch (e: any) {
-          errors.push(`${ap.name}: ${e.message}`);
-          skipped++;
+          if (override.image_url) updateData.image_url = override.image_url;
+          await supabase.from("products").update(updateData).eq("id", existing.id);
+          updated++;
+        } else {
+          const { error: insErr } = await supabase.from("products").insert(productData);
+          if (insErr) { errors.push(`${ap.name}: ${insErr.message}`); skipped++; }
+          else added++;
         }
+      } catch (e: any) {
+        errors.push(`${ap.name}: ${e.message}`);
+        skipped++;
       }
+    }
 
-      res.json({
-        status: "OK",
-        summary: { total: toSync.length, added, updated, skipped },
-        errors: errors.length ? errors : undefined
+    res.json({
+      status: "OK",
+      summary: { total: toSync.length, added, updated, skipped },
+      errors: errors.length ? errors : undefined
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/admin/ahminix/check-order/:orderId", async (req, res) => {
+  try {
+    if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط" });
+    const { orderId } = req.params;
+    const { uuid } = req.query;
+    const data = await ahminixCheckOrder(orderId, uuid === "1");
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/admin/ahminix/refresh-orders", async (req, res) => {
+  try {
+    if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط" });
+    const { data: pendingOrders, error: fetchErr } = await supabase
+      .from("orders")
+      .select("id, meta, status")
+      .eq("status", "processing");
+    if (fetchErr) throw fetchErr;
+    if (!pendingOrders?.length) return res.json({ status: "OK", message: "لا توجد طلبات معلقة", updated: 0 });
+
+    let updated = 0;
+    const results: any[] = [];
+
+    for (const order of pendingOrders) {
+      try {
+        const meta = typeof order.meta === "string" ? JSON.parse(order.meta) : order.meta;
+        const ahminixId = meta?.ahminix_order_id;
+        if (!ahminixId) continue;
+
+        const checkRes = await ahminixCheckOrder(ahminixId);
+        if (checkRes?.status !== "OK" || !checkRes?.data?.[0]) continue;
+
+        const externalOrder = checkRes.data[0];
+        const newStatus = externalOrder.status === "accept" ? "completed"
+          : externalOrder.status === "reject" ? "cancelled"
+          : "processing";
+
+        if (newStatus !== order.status) {
+          await supabase.from("orders").update({
+            status: newStatus,
+            meta: JSON.stringify({ ...meta, ahminix_status: externalOrder.status, ahminix_replay: externalOrder.replay_api })
+          }).eq("id", order.id);
+          updated++;
+          results.push({ orderId: order.id, ahminixId, oldStatus: order.status, newStatus });
+        }
+      } catch (e: any) {
+        results.push({ orderId: order.id, error: e.message });
+      }
+    }
+
+    res.json({ status: "OK", updated, results });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/admin/ahminix/content/:categoryId", async (req, res) => {
+  try {
+    if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط" });
+    const data = await ahminixGet(`/content/${req.params.categoryId}`);
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// =================== TRANSACTIONS ===================
+app.get("/api/admin/test-apisyria", async (req, res) => {
+  try {
+    const { type, tx, gsm, account_address } = req.query as any;
+    if (!APISYRIA_KEY) return res.json({ error: "APISYRIA_API_KEY غير موجود" });
+    const status = await apisyriaRequest({ resource: "status" });
+    if (!status?.success) return res.json({ step: "status_check", result: status });
+    if (tx && type === "syriatel" && gsm) {
+      const r7 = await apisyriaRequest({ resource: "syriatel", action: "find_tx", tx, gsm, period: "7" });
+      const r30 = await apisyriaRequest({ resource: "syriatel", action: "find_tx", tx, gsm, period: "30" });
+      return res.json({ status, r7, r30 });
+    }
+    if (tx && type === "shamcash" && account_address) {
+      const r = await apisyriaRequest({ resource: "shamcash", action: "find_tx", tx, account_address });
+      return res.json({ status, r });
+    }
+    const accounts = await apisyriaRequest({ resource: "accounts", action: "list" });
+    res.json({ status, accounts });
+  } catch (e: any) {
+    res.json({ error: e.message });
+  }
+});
+
+app.post("/api/transactions/verify-auto", async (req, res) => {
+  try {
+    const { userId, paymentMethodId, amount, txNumber } = req.body;
+    if (!userId || !paymentMethodId || !amount || !txNumber) return res.status(400).json({ error: "بيانات ناقصة" });
+
+    const { data: method } = await supabase.from("payment_methods")
+      .select("name, method_type, api_account, wallet_address, min_amount")
+      .eq("id", paymentMethodId).single();
+
+    if (!method || !["syriatel", "shamcash"].includes(method.method_type)) return res.status(400).json({ error: "طريقة الدفع غير صحيحة" });
+
+    const numAmount = parseFloat(amount);
+    if (numAmount < (method.min_amount || 0)) return res.status(400).json({ error: `أقل مبلغ للشحن هو ${method.min_amount} $` });
+
+    const { data: dup } = await supabase.from("transactions").select("id").eq("tx_number", txNumber).maybeSingle();
+    if (dup) return res.status(400).json({ error: "رقم العملية مستخدم مسبقاً" });
+
+    let verified = false;
+    let apiAmount = 0;
+    let apiCurrency = "USD";
+    let apiDebug = "";
+
+    if (method.method_type === "syriatel") {
+      const candidates = [method.api_account, method.wallet_address].filter(Boolean);
+      for (const gsm of candidates) {
+        const result = await verifySyriatelTx(txNumber, gsm);
+        if (result.found) { verified = true; apiAmount = result.amount || 0; apiCurrency = "SYP"; break; }
+        apiDebug = result.debug || "";
+      }
+    } else if (method.method_type === "shamcash") {
+      const candidates = [method.api_account, method.wallet_address].filter(Boolean);
+      for (const addr of candidates) {
+        const result = await verifyShamCashTx(txNumber, addr);
+        if (result.found) { verified = true; apiAmount = result.amount || 0; apiCurrency = result.currency || "SYP"; break; }
+        apiDebug = result.debug || "";
+      }
+    }
+
+    if (!verified) {
+      return res.status(400).json({ error: "لم يتم العثور على العملية. تأكد من رقم العملية أو انتظر قليلاً وأعد المحاولة.", debug: apiDebug });
+    }
+
+    const { data: user } = await supabase.from("users").select("id, name, personal_number, balance").eq("id", userId).single();
+    if (!user) return res.status(404).json({ error: "المستخدم غير موجود" });
+
+    const SYP_TO_USD_RATE = 120;
+    const usdAmount = apiCurrency === "SYP" ? parseFloat((apiAmount / SYP_TO_USD_RATE).toFixed(4)) : apiAmount;
+    const finalUsdAmount = apiCurrency === "SYP" ? usdAmount : numAmount;
+
+    const { data: tx, error: txErr } = await supabase.from("transactions").insert({
+      user_id: userId,
+      payment_method_id: paymentMethodId,
+      amount: finalUsdAmount,
+      tx_number: txNumber,
+      status: "approved",
+      note: `تحقق تلقائي - رقم العملية: ${txNumber} - المبلغ الأصلي: ${apiAmount} ${apiCurrency}`
+    }).select().single();
+    if (txErr) throw txErr;
+
+    const newBalance = parseFloat(((parseFloat(String(user.balance)) || 0) + finalUsdAmount).toFixed(4));
+    await supabase.from("users").update({ balance: newBalance }).eq("id", userId);
+
+    const adminChatId = process.env.TELEGRAM_CHAT_ID;
+    const amountLine = apiCurrency === "SYP" ? `المبلغ: ${apiAmount} ل.س (${finalUsdAmount}$)` : `المبلغ: ${finalUsdAmount}$`;
+    const msg = `✅ شحن تلقائي تم\nالمستخدم: ${user.name}\nالرقم: ${user.personal_number}\n${amountLine}\nالطريقة: ${method.name}\nرقم العملية: ${txNumber}`;
+    sendTelegramMessage(msg);
+    if (adminChatId && adminBot) adminBot.sendMessage(adminChatId, msg);
+    if (user?.id) {
+      const { data: u } = await supabase.from("users").select("telegram_chat_id").eq("id", userId).single();
+      if (u?.telegram_chat_id) userBot?.sendMessage(u.telegram_chat_id, `✅ تم شحن رصيدك بـ ${numAmount}$ عبر ${method.name} بنجاح!`);
+    }
+
+    res.json({ success: true, newBalance, addedUsd: finalUsdAmount, originalAmount: apiAmount, currency: apiCurrency });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/transactions/upload", async (req, res) => {
+  try {
+    const { userId, paymentMethodId, amount, note, receiptImageUrl } = req.body;
+    const { data: user } = await supabase.from("users").select("id, name, personal_number").eq("id", userId).single();
+    const { data: method } = await supabase.from("payment_methods").select("name").eq("id", paymentMethodId).single();
+
+    const { data: pending } = await supabase.from("transactions").select("id", { count: "exact" }).eq("user_id", userId).eq("status", "pending");
+    if ((pending?.length || 0) >= 2) return res.status(400).json({ error: "لا يمكنك إرسال أكثر من مدفوعتين قيد المراجعة." });
+
+    const { data: tx, error: txErr } = await supabase.from("transactions").insert({
+      user_id: userId,
+      payment_method_id: paymentMethodId,
+      amount,
+      note,
+      receipt_image_url: receiptImageUrl,
+      status: "pending"
+    }).select().single();
+    if (txErr) throw txErr;
+
+    sendTelegramMessage(`💳 شحن رصيد جديد\nالاسم: ${user?.name}\nالرقم الشخصي: ${user?.personal_number}\nAmount: ${amount}\nMethod: ${method?.name}`);
+
+    const adminChatId = process.env.TELEGRAM_CHAT_ID;
+    if (adminChatId && adminBot) {
+      const adminMsg = `💰 طلب شحن جديد! #TX${tx.id}\n\nالمستخدم: ${user?.name}\nالمبلغ: ${amount}$\nالطريقة: ${method?.name}\n\nرابط الإيصال: ${receiptImageUrl}`;
+      adminBot.sendMessage(adminChatId, adminMsg, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "✅ قبول", callback_data: `approve_tx_${tx.id}` }, { text: "❌ رفض", callback_data: `reject_tx_${tx.id}` }]
+          ]
+        }
       });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
     }
-  });
 
-  /**
-   * GET /api/admin/ahminix/check-order/:orderId
-   * يتحقق من حالة طلب خارجي في Ahminix
-   */
-  app.get("/api/admin/ahminix/check-order/:orderId", async (req, res) => {
-    try {
-      if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط في .env" });
-      const { orderId } = req.params;
-      const { uuid } = req.query;
-      const data = await ahminixCheckOrder(orderId, uuid === "1");
-      res.json(data);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
+    res.json({ success: true, transactionId: tx.id });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-  /**
-   * POST /api/admin/ahminix/refresh-orders
-   * يحدّث حالة جميع الطلبات الخارجية المعلّقة (processing) من Ahminix
-   */
-  app.post("/api/admin/ahminix/refresh-orders", async (req, res) => {
-    try {
-      if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط في .env" });
+app.get("/api/transactions/user/:userId", async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("transactions").select("*").eq("user_id", req.params.userId).order("created_at", { ascending: false });
+    if (error) throw error;
+    res.json(Array.isArray(data) ? data : []);
+  } catch (e: any) {
+    res.json([]);
+  }
+});
 
-      // جلب الطلبات الخارجية المعلقة
-      const { data: pendingOrders, error: fetchErr } = await supabase
-        .from("orders")
-        .select("id, meta, status")
-        .eq("status", "processing");
+// =================== REWARDS ===================
+app.post("/api/rewards/claim", async (req, res) => {
+  try {
+    const { userId, rewardIndex, goalIndex } = req.body;
+    const idx = rewardIndex ?? goalIndex;
+    if (idx === undefined || idx === null) return res.status(400).json({ error: "Missing reward index" });
 
-      if (fetchErr) throw fetchErr;
-      if (!pendingOrders?.length) return res.json({ status: "OK", message: "لا توجد طلبات معلقة", updated: 0 });
+    const { data: stats, error: sErr } = await supabase.from("user_stats").select("*").eq("user_id", userId).single();
+    if (sErr || !stats) return res.status(404).json({ error: "User stats not found" });
 
-      let updated = 0;
-      const results: any[] = [];
+    const goals = [5, 15, 30, 50, 100, 200, 500, 1000, 2000];
 
-      for (const order of pendingOrders) {
-        try {
-          const meta = typeof order.meta === "string" ? JSON.parse(order.meta) : order.meta;
-          const ahminixId = meta?.ahminix_order_id;
-          if (!ahminixId) continue; // طلب محلي، تجاهل
+    if ((stats.claimed_reward_index ?? -1) >= idx) return res.status(400).json({ error: "Reward already claimed" });
+    if (idx > 0 && (stats.claimed_reward_index ?? -1) < idx - 1) return res.status(400).json({ error: "Claim previous rewards first" });
+    if ((stats.total_recharge_sum || 0) < goals[idx]) return res.status(400).json({ error: "Goal not reached yet" });
 
-          const checkRes = await ahminixCheckOrder(ahminixId);
-          if (checkRes?.status !== "OK" || !checkRes?.data?.[0]) continue;
+    await applyReward(userId, idx);
 
-          const externalOrder = checkRes.data[0];
-          const newStatus = externalOrder.status === "accept" ? "completed"
-            : externalOrder.status === "reject" ? "cancelled"
-            : "processing";
+    await supabase.from("notifications").insert({
+      user_id: userId,
+      title: "🎁 تم استلام مكافأة",
+      message: `مبروك! لقد حصلت على مكافأة الهدف رقم ${idx + 1}!`,
+      type: "success"
+    });
 
-          if (newStatus !== order.status) {
-            await supabase.from("orders").update({
-              status: newStatus,
-              meta: JSON.stringify({ ...meta, ahminix_status: externalOrder.status, ahminix_replay: externalOrder.replay_api })
-            }).eq("id", order.id);
-            updated++;
-            results.push({ orderId: order.id, ahminixId, oldStatus: order.status, newStatus });
-          }
-        } catch (e: any) {
-          results.push({ orderId: order.id, error: e.message });
-        }
-      }
+    const { data: updatedStats } = await supabase.from("user_stats").select("*").eq("user_id", userId).single();
+    res.json({ success: true, stats: updatedStats });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-      res.json({ status: "OK", updated, results });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
+// =================== VOUCHERS ===================
+app.post("/api/vouchers/redeem", async (req, res) => {
+  try {
+    const { userId, code } = req.body;
+    const { data: voucher } = await supabase.from("vouchers").select("*").eq("code", code).eq("active", true).single();
+    if (!voucher) return res.status(404).json({ error: "Invalid or inactive voucher" });
 
-  /**
-   * GET /api/admin/ahminix/content/:categoryId
-   * يجلب فئة ومنتجاتها من Ahminix (0 = كل الفئات)
-   */
-  app.get("/api/admin/ahminix/content/:categoryId", async (req, res) => {
-    try {
-      if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط في .env" });
-      const data = await ahminixGet(`/content/${req.params.categoryId}`);
-      res.json(data);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
+    const { data: usage } = await supabase.from("voucher_uses").select("id").eq("voucher_id", voucher.id).eq("user_id", userId).single();
+    if (usage) return res.status(400).json({ error: "Voucher already used" });
 
-  // =================== TRANSACTIONS ===================
+    if (voucher.used_count >= voucher.max_uses) return res.status(400).json({ error: "Voucher fully used" });
 
-  // Diagnostic route - test API Syria connection (admin only)
-  app.get("/api/admin/test-apisyria", async (req, res) => {
-    try {
-      const { type, tx, gsm, account_address } = req.query as any;
-      if (!APISYRIA_KEY) return res.json({ error: "APISYRIA_API_KEY غير موجود في المتغيرات البيئية" });
-      
-      // Test status first
-      const status = await apisyriaRequest({ resource: "status" });
-      if (!status?.success) return res.json({ step: "status_check", result: status });
-      
-      // If tx provided, try find_tx
-      if (tx && type === "syriatel" && gsm) {
-        const r7 = await apisyriaRequest({ resource: "syriatel", action: "find_tx", tx, gsm, period: "7" });
-        const r30 = await apisyriaRequest({ resource: "syriatel", action: "find_tx", tx, gsm, period: "30" });
-        return res.json({ status, r7, r30 });
-      }
-      if (tx && type === "shamcash" && account_address) {
-        const r = await apisyriaRequest({ resource: "shamcash", action: "find_tx", tx, account_address });
-        return res.json({ status, r });
-      }
-      
-      // List accounts
-      const accounts = await apisyriaRequest({ resource: "accounts", action: "list" });
-      res.json({ status, accounts });
-    } catch (e: any) {
-      res.json({ error: e.message });
-    }
-  });
+    await supabase.from("voucher_uses").insert({ voucher_id: voucher.id, user_id: userId });
+    await supabase.from("vouchers").update({ used_count: voucher.used_count + 1 }).eq("id", voucher.id);
+    await supabase.rpc("increment_balance", { user_id_param: userId, amount_param: voucher.amount });
+    await supabase.from("user_stats").update({ vouchers_redeemed_count: supabase.rpc as any }).eq("user_id", userId);
 
-  // Auto-verify transaction for Syriatel/ShamCash
-  app.post("/api/transactions/verify-auto", async (req, res) => {
-    try {
-      const { userId, paymentMethodId, amount, txNumber } = req.body;
-      if (!userId || !paymentMethodId || !amount || !txNumber) {
-        return res.status(400).json({ error: "بيانات ناقصة" });
-      }
-
-      const { data: method } = await supabase.from("payment_methods")
-        .select("name, method_type, api_account, wallet_address, min_amount")
-        .eq("id", paymentMethodId).single();
-
-      if (!method || !["syriatel", "shamcash"].includes(method.method_type)) {
-        return res.status(400).json({ error: "طريقة الدفع غير صحيحة" });
-      }
-
-      const numAmount = parseFloat(amount);
-      if (numAmount < (method.min_amount || 0)) {
-        return res.status(400).json({ error: `أقل مبلغ للشحن هو ${method.min_amount} $` });
-      }
-
-      // Check duplicate tx_number
-      const { data: dup } = await supabase.from("transactions").select("id").eq("tx_number", txNumber).maybeSingle();
-      if (dup) return res.status(400).json({ error: "رقم العملية مستخدم مسبقاً" });
-
-      // Verify with API Syria
-      let verified = false;
-      let apiAmount = 0;
-      let apiCurrency = "USD";
-      let apiDebug = "";
-
-      if (method.method_type === "syriatel") {
-        const candidates = [method.api_account, method.wallet_address].filter(Boolean);
-        for (const gsm of candidates) {
-          const result = await verifySyriatelTx(txNumber, gsm);
-          if (result.found) { verified = true; apiAmount = result.amount || 0; apiCurrency = "SYP"; break; }
-          apiDebug = result.debug || "";
-        }
-      } else if (method.method_type === "shamcash") {
-        const candidates = [method.api_account, method.wallet_address].filter(Boolean);
-        for (const addr of candidates) {
-          const result = await verifyShamCashTx(txNumber, addr);
-          if (result.found) { verified = true; apiAmount = result.amount || 0; apiCurrency = result.currency || "SYP"; break; }
-          apiDebug = result.debug || "";
-        }
-      }
-
-      if (!verified) {
-        console.log("[verify-auto] Not found. API debug:", apiDebug);
-        return res.status(400).json({ 
-          error: "لم يتم العثور على العملية. تأكد من رقم العملية أو انتظر قليلاً وأعد المحاولة.",
-          debug: apiDebug
-        });
-      }
-
-      const { data: user } = await supabase.from("users").select("id, name, personal_number, balance").eq("id", userId).single();
-      if (!user) return res.status(404).json({ error: "المستخدم غير موجود" });
-
-      // Convert SYP → USD (120 SYP = 1 USD)
-      const SYP_TO_USD_RATE = 120;
-      const usdAmount = apiCurrency === "SYP"
-        ? parseFloat((apiAmount / SYP_TO_USD_RATE).toFixed(4))
-        : apiAmount;
-
-      // Use the user-entered amount if USD, or the converted amount if SYP
-      const finalUsdAmount = apiCurrency === "SYP" ? usdAmount : numAmount;
-
-      // Insert transaction as approved directly
-      const { data: tx, error: txErr } = await supabase.from("transactions").insert({
-        user_id: userId,
-        payment_method_id: paymentMethodId,
-        amount: finalUsdAmount,
-        tx_number: txNumber,
-        status: "approved",
-        note: `تحقق تلقائي - رقم العملية: ${txNumber} - المبلغ الأصلي: ${apiAmount} ${apiCurrency}`
-      }).select().single();
-      if (txErr) throw txErr;
-
-      // Add balance to user
-      const newBalance = parseFloat(((parseFloat(String(user.balance)) || 0) + finalUsdAmount).toFixed(4));
-      await supabase.from("users").update({ balance: newBalance }).eq("id", userId);
-
-      // Notify via Telegram
-      const adminChatId = process.env.TELEGRAM_CHAT_ID;
-      const amountLine = apiCurrency === "SYP"
-        ? `المبلغ: ${apiAmount} ل.س (${finalUsdAmount}$)`
-        : `المبلغ: ${finalUsdAmount}$`;
-      const msg = `✅ شحن تلقائي تم\nالمستخدم: ${user.name}\nالرقم: ${user.personal_number}\n${amountLine}\nالطريقة: ${method.name}\nرقم العملية: ${txNumber}`;
-      sendTelegramMessage(msg);
-      if (adminChatId && adminBot) adminBot.sendMessage(adminChatId, msg);
-      if (user?.id) {
-        const { data: u } = await supabase.from("users").select("telegram_chat_id").eq("id", userId).single();
-        if (u?.telegram_chat_id) userBot?.sendMessage(u.telegram_chat_id, `✅ تم شحن رصيدك بـ ${numAmount}$ عبر ${method.name} بنجاح!`);
-      }
-
-      res.json({ success: true, newBalance, addedUsd: finalUsdAmount, originalAmount: apiAmount, currency: apiCurrency });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post("/api/transactions/upload", async (req, res) => {
-    try {
-      const { userId, paymentMethodId, amount, note, receiptImageUrl } = req.body;
-      const { data: user } = await supabase.from("users").select("id, name, personal_number").eq("id", userId).single();
-      const { data: method } = await supabase.from("payment_methods").select("name").eq("id", paymentMethodId).single();
-
-      const { data: pending } = await supabase.from("transactions").select("id", { count: "exact" }).eq("user_id", userId).eq("status", "pending");
-      if ((pending?.length || 0) >= 2) {
-        return res.status(400).json({ error: "لا يمكنك إرسال أكثر من مدفوعتين قيد المراجعة." });
-      }
-
-      const { data: tx, error: txErr } = await supabase.from("transactions").insert({
-        user_id: userId,
-        payment_method_id: paymentMethodId,
-        amount,
-        note,
-        receipt_image_url: receiptImageUrl,
-        status: "pending"
-      }).select().single();
-      if (txErr) throw txErr;
-
-      sendTelegramMessage(`💳 شحن رصيد جديد\nالاسم: ${user?.name}\nالرقم الشخصي: ${user?.personal_number}\nAmount: ${amount}\nMethod: ${method?.name}`);
-
-      const adminChatId = process.env.TELEGRAM_CHAT_ID;
-      if (adminChatId && adminBot) {
-        const adminMsg = `💰 طلب شحن جديد! #TX${tx.id}\n\nالمستخدم: ${user?.name}\nالمبلغ: ${amount}$\nالطريقة: ${method?.name}\n\nرابط الإيصال: ${receiptImageUrl}`;
-        adminBot.sendMessage(adminChatId, adminMsg, {
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: "✅ قبول", callback_data: `approve_tx_${tx.id}` }, { text: "❌ رفض", callback_data: `reject_tx_${tx.id}` }]
-            ]
-          }
-        });
-      }
-
-      res.json({ success: true, transactionId: tx.id });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.get("/api/transactions/user/:userId", async (req, res) => {
-    try {
-      const { data, error } = await supabase.from("transactions").select("*").eq("user_id", req.params.userId).order("created_at", { ascending: false });
-      if (error) throw error;
-      res.json(Array.isArray(data) ? data : []);
-    } catch (e: any) {
-      res.json([]); // safe fallback
-    }
-  });
-
-  // =================== REWARDS ===================
-
-  app.post("/api/rewards/claim", async (req, res) => {
-    try {
-      const { userId, rewardIndex, goalIndex } = req.body;
-      const idx = rewardIndex ?? goalIndex; // قبول كلا الاسمين
-      if (idx === undefined || idx === null) return res.status(400).json({ error: "Missing reward index" });
-
-      const { data: stats, error: sErr } = await supabase.from("user_stats").select("*").eq("user_id", userId).single();
-      if (sErr || !stats) return res.status(404).json({ error: "User stats not found" });
-
-      const goals = [5, 15, 30, 50, 100, 200, 500];
-
-      if ((stats.claimed_reward_index ?? -1) >= idx) return res.status(400).json({ error: "Reward already claimed" });
-      if (idx > 0 && (stats.claimed_reward_index ?? -1) < idx - 1) return res.status(400).json({ error: "Claim previous rewards first" });
-      if ((stats.total_recharge_sum || 0) < goals[idx]) return res.status(400).json({ error: "Goal not reached yet" });
-
-      await applyReward(userId, idx);
-
-      await supabase.from("notifications").insert({
-        user_id: userId,
-        title: "🎁 تم استلام مكافأة",
-        message: `مبروك! لقد حصلت على مكافأة الهدف رقم ${idx + 1}!`,
-        type: "success"
-      });
-
-      // إرجاع stats المحدّثة فقط بدون رصيد
-      const { data: updatedStats } = await supabase.from("user_stats").select("*").eq("user_id", userId).single();
-      res.json({ success: true, stats: updatedStats });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  // =================== VOUCHERS ===================
-
-  app.post("/api/vouchers/redeem", async (req, res) => {
-    try {
-      const { userId, code } = req.body;
-      const { data: voucher } = await supabase.from("vouchers").select("*").eq("code", code).eq("active", true).single();
-      if (!voucher) return res.status(404).json({ error: "Invalid or inactive voucher" });
-
-      const { data: usage } = await supabase.from("voucher_uses").select("id").eq("voucher_id", voucher.id).eq("user_id", userId).single();
-      if (usage) return res.status(400).json({ error: "Voucher already used" });
-
-      if (voucher.used_count >= voucher.max_uses) return res.status(400).json({ error: "Voucher fully used" });
-
-      await supabase.from("voucher_uses").insert({ voucher_id: voucher.id, user_id: userId });
-      await supabase.from("vouchers").update({ used_count: voucher.used_count + 1 }).eq("id", voucher.id);
-      await supabase.rpc("increment_balance", { user_id_param: userId, amount_param: voucher.amount });
-      await supabase.from("user_stats").update({ vouchers_redeemed_count: supabase.rpc as any }).eq("user_id", userId);
-
-      res.json({ success: true, amount: voucher.amount });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
+    res.json({ success: true, amount: voucher.amount });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
   // =================== CHAT ===================
+app.post("/api/chat/send", async (req, res) => {
+  try {
+    const { user_id, guest_id, sender_role, content, image_url, type, rating } = req.body;
 
-  app.post("/api/chat/send", async (req, res) => {
-    try {
-      const { user_id, guest_id, sender_role, content, image_url, type, rating } = req.body;
+    if (sender_role === "user" && user_id) {
+      const { data: user } = await supabase.from("users").select("is_vip").eq("id", user_id).single();
+      const { data: statsData } = await supabase.from("user_stats").select("claimed_reward_index").eq("user_id", user_id).single();
 
-      if (sender_role === "user" && user_id) {
-        const { data: user } = await supabase.from("users").select("is_vip").eq("id", user_id).single();
-        const { data: statsData } = await supabase.from("user_stats").select("claimed_reward_index").eq("user_id", user_id).single();
+      if (!user?.is_vip) {
+        let limit = 5;
+        if (statsData) {
+          if (statsData.claimed_reward_index >= 6) limit = 100;
+          else if (statsData.claimed_reward_index >= 3) limit = 30;
+        }
 
-        if (!user?.is_vip) {
-          let limit = 5;
-          if (statsData) {
-            if (statsData.claimed_reward_index >= 6) limit = 100;
-            else if (statsData.claimed_reward_index >= 3) limit = 30;
-          }
+        const today = new Date().toISOString().split("T")[0];
+        const { data: countData } = await supabase.from("daily_message_counts").select("count").eq("user_id", user_id).eq("date", today).single();
+        const currentCount = countData?.count || 0;
 
-          const today = new Date().toISOString().split("T")[0];
-          const { data: countData } = await supabase.from("daily_message_counts").select("count").eq("user_id", user_id).eq("date", today).single();
-          const currentCount = countData?.count || 0;
+        if (currentCount >= limit) return res.status(403).json({ error: `لقد وصلت للحد اليومي (${limit} رسالة).` });
 
-          if (currentCount >= limit) return res.status(403).json({ error: `لقد وصلت للحد اليومي (${limit} رسالة).` });
-
-          if (countData) {
-            await supabase.from("daily_message_counts").update({ count: currentCount + 1 }).eq("user_id", user_id).eq("date", today);
-          } else {
-            await supabase.from("daily_message_counts").insert({ user_id, date: today, count: 1 });
-          }
+        if (countData) {
+          await supabase.from("daily_message_counts").update({ count: currentCount + 1 }).eq("user_id", user_id).eq("date", today);
+        } else {
+          await supabase.from("daily_message_counts").insert({ user_id, date: today, count: 1 });
         }
       }
-
-      const { data: msg, error } = await supabase.from("messages").insert({
-        user_id, guest_id, sender_role, content, image_url, type: type || "text", rating
-      }).select().single();
-      if (error) throw error;
-
-      if (sender_role === "user") {
-        sendTelegramMessage(`💬 رسالة جديدة:\n${content || "[صورة]"}`);
-
-        if (content) {
-          const { data: autoReply } = await supabase.from("auto_replies").select("reply_text").ilike("trigger_text", content.trim()).limit(1).single();
-          if (autoReply) {
-            await supabase.from("messages").insert({
-              user_id, guest_id, sender_role: "admin", content: autoReply.reply_text, type: "bot_reply"
-            });
-          }
-        }
-      } else if (user_id) {
-        sendPushNotification(user_id, "رد من الدعم", "لقد تلقيت رداً جديداً.");
-        sendTelegramToUser(user_id, `💬 رد جديد من الدعم الفني:\n${content || "[صورة]"}`);
-      }
-
-      res.json({ success: true, id: msg.id });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
     }
-  });
 
-  app.get("/api/chat/messages", async (req, res) => {
-    try {
-      const { user_id, guest_id } = req.query;
-      let query = supabase.from("messages").select("*").order("created_at");
-      if (user_id) query = query.eq("user_id", user_id as string);
-      else if (guest_id) query = query.eq("guest_id", guest_id as string);
-      const { data, error } = await query;
-      if (error) throw error;
-      res.json(Array.isArray(data) ? data : []);
-    } catch (e: any) {
-      res.json([]);
-    }
-  });
+    const { data: msg, error } = await supabase.from("messages").insert({
+      user_id, guest_id, sender_role, content, image_url, type: type || "text", rating
+    }).select().single();
+    if (error) throw error;
 
-  // Legacy endpoint: /api/chat/messages/:id
-  app.get("/api/chat/messages/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { guest } = req.query;
-      let query = supabase.from("messages").select("*").order("created_at");
-      if (guest === "true") {
-        query = query.eq("guest_id", id).is("user_id", null);
-      } else {
-        query = query.eq("user_id", id);
-      }
-      const { data, error } = await query;
-      if (error) throw error;
-      res.json(Array.isArray(data) ? data : []);
-    } catch (e: any) {
-      res.json([]);
-    }
-  });
+    if (sender_role === "user") {
+      sendTelegramMessage(`💬 رسالة جديدة:\n${content || "[صورة]"}`);
 
-  app.post("/api/chat/mark-read", async (req, res) => {
-    try {
-      const { userId } = req.body;
-      await supabase.from("messages").update({ is_read: true }).eq("user_id", userId).eq("sender_role", "admin");
-      res.json({ success: true });
-    } catch (e: any) {
-      res.json([]); // safe fallback
-    }
-  });
-
-  // =================== ADMIN ROUTES ===================
-
-  app.post("/api/admin/login", async (req, res) => {
-    try {
-      const { password } = req.body;
-      const { data: setting } = await supabase.from("settings").select("value").eq("key", "admin_password").single();
-      if (password === (setting?.value || "12321")) {
-        res.json({ success: true });
-      } else {
-        res.status(401).json({ error: "Incorrect password" });
-      }
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post("/api/admin/change-password", async (req, res) => {
-    try {
-      const { newPassword } = req.body;
-      await supabase.from("settings").upsert({ key: "admin_password", value: newPassword });
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post("/api/admin/settings", async (req, res) => {
-    try {
-      const { key, value, settings } = req.body;
-      // Accept single key/value or array of settings
-      if (key !== undefined) {
-        await supabase.from("settings").upsert({ key, value }, { onConflict: "key" });
-      } else if (Array.isArray(settings)) {
-        for (const s of settings) {
-          await supabase.from("settings").upsert({ key: s.key, value: s.value }, { onConflict: "key" });
+      if (content) {
+        const { data: autoReply } = await supabase.from("auto_replies").select("reply_text").ilike("trigger_text", content.trim()).limit(1).single();
+        if (autoReply) {
+          await supabase.from("messages").insert({
+            user_id, guest_id, sender_role: "admin", content: autoReply.reply_text, type: "bot_reply"
+          });
         }
       }
+    } else if (user_id) {
+      sendPushNotification(user_id, "رد من الدعم", "لقد تلقيت رداً جديداً.");
+      sendTelegramToUser(user_id, `💬 رد جديد من الدعم الفني:\n${content || "[صورة]"}`);
+    }
+
+    res.json({ success: true, id: msg.id });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/chat/messages", async (req, res) => {
+  try {
+    const { user_id, guest_id } = req.query;
+    let query = supabase.from("messages").select("*").order("created_at");
+    if (user_id) query = query.eq("user_id", user_id as string);
+    else if (guest_id) query = query.eq("guest_id", guest_id as string);
+    const { data, error } = await query;
+    if (error) throw error;
+    res.json(Array.isArray(data) ? data : []);
+  } catch (e: any) {
+    res.json([]);
+  }
+});
+
+app.get("/api/chat/messages/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { guest } = req.query;
+    let query = supabase.from("messages").select("*").order("created_at");
+    if (guest === "true") {
+      query = query.eq("guest_id", id).is("user_id", null);
+    } else {
+      query = query.eq("user_id", id);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    res.json(Array.isArray(data) ? data : []);
+  } catch (e: any) {
+    res.json([]);
+  }
+});
+
+app.post("/api/chat/mark-read", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    await supabase.from("messages").update({ is_read: true }).eq("user_id", userId).eq("sender_role", "admin");
+    res.json({ success: true });
+  } catch (e: any) {
+    res.json([]);
+  }
+});
+
+// =================== ADMIN ROUTES ===================
+app.post("/api/admin/login", async (req, res) => {
+  try {
+    const { password } = req.body;
+    const { data: setting } = await supabase.from("settings").select("value").eq("key", "admin_password").single();
+    if (password === (setting?.value || "12321")) {
       res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
+    } else {
+      res.status(401).json({ error: "Incorrect password" });
     }
-  });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-  app.get("/api/admin/users", async (req, res) => {
-    try {
-      const { data, error } = await supabase.from("users").select("id, name, email, phone, balance, personal_number, is_vip, is_banned, is_blocked, blocked_until, avatar_url, created_at").order("created_at", { ascending: false });
-      if (error) throw error;
-      res.json(Array.isArray(data) ? data : []);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
+app.post("/api/admin/change-password", async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    await supabase.from("settings").upsert({ key: "admin_password", value: newPassword });
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/admin/settings", async (req, res) => {
+  try {
+    const { key, value, settings } = req.body;
+    if (key !== undefined) {
+      await supabase.from("settings").upsert({ key, value }, { onConflict: "key" });
+    } else if (Array.isArray(settings)) {
+      for (const s of settings) {
+        await supabase.from("settings").upsert({ key: s.key, value: s.value }, { onConflict: "key" });
+      }
     }
-  });
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
+app.get("/api/admin/users", async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("users").select("id, name, email, phone, balance, personal_number, is_vip, is_banned, is_blocked, blocked_until, avatar_url, created_at").order("created_at", { ascending: false });
+    if (error) throw error;
+    res.json(Array.isArray(data) ? data : []);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
   app.post("/api/admin/users/:id/vip", async (req, res) => {
-    try {
-      const { isVip } = req.body;
-      await supabase.from("users").update({ is_vip: isVip }).eq("id", req.params.id);
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
+  try {
+    const { isVip } = req.body;
+    await supabase.from("users").update({ is_vip: isVip }).eq("id", req.params.id);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-  app.post("/api/admin/users/:id/balance", async (req, res) => {
-    try {
-      const { amount } = req.body;
-      await supabase.from("users").update({ balance: amount }).eq("id", req.params.id);
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
+app.post("/api/admin/users/:id/balance", async (req, res) => {
+  try {
+    const { amount } = req.body;
+    await supabase.from("users").update({ balance: amount }).eq("id", req.params.id);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-  app.post("/api/admin/users/:id/block", async (req, res) => {
-    try {
-      const { minutes, blockedUntil } = req.body;
-      let until: string | null = null;
-      if (minutes && Number(minutes) > 0) {
-        const d = new Date();
-        d.setMinutes(d.getMinutes() + Number(minutes));
-        until = d.toISOString();
-      } else if (blockedUntil) {
-        until = blockedUntil;
+app.post("/api/admin/users/:id/block", async (req, res) => {
+  try {
+    const { minutes, blockedUntil } = req.body;
+    let until: string | null = null;
+    if (minutes && Number(minutes) > 0) {
+      const d = new Date();
+      d.setMinutes(d.getMinutes() + Number(minutes));
+      until = d.toISOString();
+    } else if (blockedUntil) {
+      until = blockedUntil;
+    }
+    await supabase.from("users").update({ blocked_until: until, is_banned: !!until }).eq("id", req.params.id);
+    res.json({ success: true, blocked_until: until });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/admin/users/:id", async (req, res) => {
+  try {
+    await deleteUserCompletely(req.params.id);
+    res.json({ success: true, message: "تم حذف المستخدم بنجاح" });
+  } catch (e: any) {
+    console.error("Delete user error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// إرسال إشعار من لوحة التحكم
+app.post("/api/admin/notify", async (req, res) => {
+  try {
+    const { userId, title, body, url } = req.body;
+    if (!title || !body) return res.status(400).json({ error: "title و body مطلوبان" });
+
+    const notifUrl = url || "/";
+
+    if (userId) {
+      await sendPushNotification(String(userId), title, body, notifUrl);
+      await supabase.from("notifications").insert({
+        user_id: userId,
+        title,
+        message: body,
+        type: "info"
+      });
+      res.json({ success: true, sent: 1 });
+    } else {
+      await sendPushNotification(null, title, body, notifUrl);
+      const { data: allUsers } = await supabase.from("users").select("id");
+      if (allUsers && allUsers.length > 0) {
+        const notifs = allUsers.map((u: any) => ({
+          user_id: u.id, title, message: body, type: "info"
+        }));
+        await supabase.from("notifications").insert(notifs);
       }
-      await supabase.from("users").update({ blocked_until: until, is_banned: !!until }).eq("id", req.params.id);
-      res.json({ success: true, blocked_until: until });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.json({ success: true, sent: allUsers?.length || 0 });
     }
-  });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-  app.delete("/api/admin/users/:id", async (req, res) => {
-    try {
-      await deleteUserCompletely(req.params.id);
-      res.json({ success: true, message: "تم حذف المستخدم بنجاح" });
-    } catch (e: any) {
-      console.error("Delete user error:", e);
-      res.status(500).json({ error: e.message });
-    }
-  });
+app.post("/api/admin/manual-topup", async (req, res) => {
+  try {
+    const { personalNumber, amount, note } = req.body;
+    const { data: user } = await supabase.from("users").select("id, name").eq("personal_number", personalNumber).single();
+    if (!user) return res.status(404).json({ error: "User not found" });
 
-  // إرسال إشعار من لوحة التحكم
-  app.post("/api/admin/notify", async (req, res) => {
-    try {
-      const { userId, title, body, url } = req.body;
-      if (!title || !body) return res.status(400).json({ error: "title و body مطلوبان" });
+    await supabase.rpc("increment_balance", { user_id_param: user.id, amount_param: amount });
+    await supabase.from("transactions").insert({ user_id: user.id, amount, note: note || "شحن يدوي من الإدارة", status: "approved" });
+    await supabase.from("user_stats").update({ total_recharge_sum: supabase.rpc as any }).eq("user_id", user.id);
 
-      const notifUrl = url || "/";
+    sendTelegramMessage(`💰 شحن يدوي\nالاسم: ${user.name}\nالرقم الشخصي: ${personalNumber}\nالمبلغ: ${amount}`);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-      if (userId) {
-        // إشعار لمستخدم واحد
-        await sendPushNotification(String(userId), title, body, notifUrl);
-        await supabase.from("notifications").insert({
-          user_id: userId,
-          title,
-          message: body,
-          type: "info"
-        });
-        res.json({ success: true, sent: 1 });
-      } else {
-        // إشعار للجميع
-        await sendPushNotification(null, title, body, notifUrl);
-        // أضف لكل المستخدمين
-        const { data: allUsers } = await supabase.from("users").select("id");
-        if (allUsers && allUsers.length > 0) {
-          const notifs = allUsers.map((u: any) => ({
-            user_id: u.id, title, message: body, type: "info"
-          }));
-          await supabase.from("notifications").insert(notifs);
-        }
-        res.json({ success: true, sent: allUsers?.length || 0 });
-      }
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post("/api/admin/manual-topup", async (req, res) => {
-    try {
-      const { personalNumber, amount, note } = req.body;
-      const { data: user } = await supabase.from("users").select("id, name").eq("personal_number", personalNumber).single();
-      if (!user) return res.status(404).json({ error: "User not found" });
-
-      await supabase.rpc("increment_balance", { user_id_param: user.id, amount_param: amount });
-      await supabase.from("transactions").insert({ user_id: user.id, amount, note: note || "شحن يدوي من الإدارة", status: "approved" });
-      await supabase.from("user_stats").update({ total_recharge_sum: supabase.rpc as any }).eq("user_id", user.id);
-
-      sendTelegramMessage(`💰 شحن يدوي\nالاسم: ${user.name}\nالرقم الشخصي: ${personalNumber}\nالمبلغ: ${amount}`);
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.get("/api/admin/orders", async (req, res) => {
-    try {
-      const { data, error } = await supabase
-        .from("orders")
-        .select(`
+app.get("/api/admin/orders", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select(`
+        *,
+        users(name, email, personal_number),
+        order_items(
           *,
-          users(name, email, personal_number),
-          order_items(
-            *,
-            products(
-              name, store_type,
-              subcategories(
-                name,
-                categories(name)
-              )
+          products(
+            name, store_type,
+            subcategories(
+              name,
+              categories(name)
             )
           )
-        `)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
+        )
+      `)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
 
-      const enriched = (data || []).map((order: any) => {
-        const item = order.order_items?.[0];
-        const product = item?.products;
-        return {
-          ...order,
-          user_name: order.users?.name || "مستخدم محذوف",
-          product_name: product?.name || "منتج محذوف",
-          category_name: product?.subcategories?.categories?.name || null,
-          subcategory_name: product?.subcategories?.name || null,
+    const enriched = (data || []).map((order: any) => {
+      const item = order.order_items?.[0];
+      const product = item?.products;
+      return {
+        ...order,
+        user_name: order.users?.name || "مستخدم محذوف",
+        product_name: product?.name || "منتج محذوف",
+        category_name: product?.subcategories?.categories?.name || null,
+        subcategory_name: product?.subcategories?.name || null,
+      };
+    });
+
+    res.json(enriched);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/admin/orders/:id/status", async (req, res) => {
+  try {
+    const { status, response, admin_response } = req.body;
+    const responseText = response || admin_response;
+
+    const { data: order, error: fetchErr } = await supabase
+      .from("orders")
+      .select(`*, order_items(*, products(*))`)
+      .eq("id", req.params.id)
+      .single();
+    if (fetchErr) throw fetchErr;
+
+    let metaParsed: any = {};
+    try { metaParsed = JSON.parse(order.meta || "{}"); } catch {}
+
+    let finalStatus = status;
+    let updatedMeta = { ...metaParsed };
+
+    if (status === 'approved' && order.status === 'pending_admin') {
+      const product = order.order_items?.[0]?.products;
+      if (product?.store_type === 'external_api' && product?.external_id) {
+        if (!AHMINIX_TOKEN) return res.status(500).json({ error: "AHMINIX_API_TOKEN غير مضبوط" });
+        const playerId = metaParsed?.playerId || metaParsed?.input || "";
+        const qty = order.order_items?.[0]?.quantity || 1;
+        const orderUuid = `vipronea-admin-${order.id}-${Date.now()}`;
+
+        console.log(`[API] Admin approved order #${order.id} - sending to API`);
+        const apiRes = await ahminixCreateOrder(String(product.external_id), qty, playerId, orderUuid);
+
+        if (!apiRes || apiRes.status !== "OK") {
+          const errMsg = apiRes?.message || apiRes?.error || "فشل إرسال الطلب للـ API";
+          return res.status(400).json({ error: errMsg });
+        }
+
+        updatedMeta = {
+          ...updatedMeta,
+          ahminix_order_id: apiRes.data?.order_id,
+          ahminix_status: apiRes.data?.status,
+          ahminix_replay: apiRes.data?.replay_api || [],
+          admin_approved_at: new Date().toISOString()
         };
-      });
-
-      res.json(enriched);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
+        finalStatus = apiRes.data?.status === 'accept' ? 'completed' : 'processing';
+      } else {
+        finalStatus = 'completed';
+      }
     }
-  });
 
-  app.post("/api/admin/orders/:id/status", async (req, res) => {
-    try {
-      const { status, response, admin_response } = req.body;
-      const responseText = response || admin_response;
+    if (status === 'rejected') {
+      finalStatus = 'failed';
+      const { data: userBalance } = await supabase.from("users").select("balance").eq("id", order.user_id).single();
+      if (userBalance) {
+        await supabase.from("users").update({ balance: userBalance.balance + order.total_amount }).eq("id", order.user_id);
+        updatedMeta = { ...updatedMeta, refunded: true, refunded_at: new Date().toISOString() };
+      }
+    }
 
-      // جلب بيانات الطلب الكاملة
-      const { data: order, error: fetchErr } = await supabase
-        .from("orders")
-        .select(`*, order_items(*, products(*))`)
-        .eq("id", req.params.id)
-        .single();
-      if (fetchErr) throw fetchErr;
+    const { error: oErr } = await supabase.from("orders").update({
+      status: finalStatus,
+      admin_response: responseText,
+      meta: JSON.stringify(updatedMeta)
+    }).eq("id", req.params.id);
+    if (oErr) throw oErr;
 
-      let metaParsed: any = {};
-      try { metaParsed = JSON.parse(order.meta || "{}"); } catch {}
+    await supabase.from("notifications").insert({
+      user_id: order.user_id,
+      title: `تحديث حالة الطلب #${req.params.id}`,
+      message: finalStatus === 'failed' ? `تم رفض طلبك #${req.params.id} وتم إعادة رصيدك. ${responseText || ""}` : `حالة طلبك الآن: ${finalStatus}. ${responseText || ""}`,
+      type: finalStatus === 'completed' ? "success" : finalStatus === 'failed' ? "error" : "info"
+    });
 
-      let finalStatus = status;
-      let updatedMeta = { ...metaParsed };
+    if (order.user_id && responseText) {
+      sendTelegramToUser(order.user_id, `🔔 وصلك رد جديد على طلبك #${req.params.id}:\n\n${responseText}`);
+    }
 
-      // إذا كان الأدمن يوافق على طلب خارجي كان ينتظر
-      if (status === 'approved' && order.status === 'pending_admin') {
-        const product = order.order_items?.[0]?.products;
-        if (product?.store_type === 'external_api' && product?.external_id) {
-          if (!AHMINIX_TOKEN) {
-            return res.status(500).json({ error: "AHMINIX_API_TOKEN غير مضبوط" });
-          }
-          const playerId = metaParsed?.playerId || metaParsed?.input || "";
-          const qty = order.order_items?.[0]?.quantity || 1;
-          const orderUuid = `vipronea-admin-${order.id}-${Date.now()}`;
+    res.json({ success: true, finalStatus });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-          console.log(`[API] Admin approved order #${order.id} - sending to API`);
-          const apiRes = await ahminixCreateOrder(String(product.external_id), qty, playerId, orderUuid);
+app.get("/api/admin/transactions", async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("transactions").select("*, users(name, personal_number), payment_methods(name)").order("created_at", { ascending: false });
+    if (error) throw error;
+    res.json(Array.isArray(data) ? data : []);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-          if (!apiRes || apiRes.status !== "OK") {
-            const errMsg = apiRes?.message || apiRes?.error || "فشل إرسال الطلب للـ API";
-            return res.status(400).json({ error: errMsg });
-          }
+app.post("/api/admin/transactions/:id/approve", async (req, res) => {
+  try {
+    const { data: tx, error: txErr } = await supabase.from("transactions").select("*").eq("id", req.params.id).single();
+    if (txErr || !tx) return res.status(404).json({ error: "Transaction not found" });
+    if (tx.status !== "pending") return res.status(400).json({ error: "Invalid transaction" });
 
-          updatedMeta = {
-            ...updatedMeta,
-            ahminix_order_id: apiRes.data?.order_id,
-            ahminix_status: apiRes.data?.status,
-            ahminix_replay: apiRes.data?.replay_api || [],
-            admin_approved_at: new Date().toISOString()
-          };
-          finalStatus = apiRes.data?.status === 'accept' ? 'completed' : 'processing';
+    await supabase.from("transactions").update({ status: "approved" }).eq("id", req.params.id);
+    await supabase.rpc("increment_balance", { user_id_param: tx.user_id, amount_param: tx.amount });
+    await supabase.from("user_stats").update({ total_recharge_sum: tx.amount }).eq("user_id", tx.user_id);
+
+    await supabase.from("notifications").insert({
+      user_id: tx.user_id,
+      title: "تم قبول الشحن",
+      message: `تمت إضافة ${tx.amount}$ إلى رصيدك بنجاح.`,
+      type: "success"
+    });
+
+    sendTelegramToUser(tx.user_id, `✅ تم قبول طلب الشحن الخاص بك! تم إضافة ${tx.amount}$ لرصيدك.`);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/admin/transactions/:id/reject", async (req, res) => {
+  try {
+    await supabase.from("transactions").update({ status: "rejected" }).eq("id", req.params.id);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/admin/offers", async (req, res) => {
+  try {
+    const { title, description, image_url, active } = req.body;
+    const { data, error } = await supabase.from("offers").insert({ title, description, image_url, active }).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/admin/vouchers", async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("vouchers").select("*").order("created_at", { ascending: false });
+    if (error) throw error;
+    res.json(Array.isArray(data) ? data : []);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/admin/vouchers", async (req, res) => {
+  try {
+    const { code, amount, max_uses } = req.body;
+    const { data, error } = await supabase.from("vouchers").insert({ code, amount, max_uses }).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/admin/banners", async (req, res) => {
+  try {
+    const { image_url, order_index } = req.body;
+    const { data, error } = await supabase.from("banners").insert({ image_url, order_index }).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/admin/categories", async (req, res) => {
+  try {
+    const { name, image_url, order_index, active, special_id } = req.body;
+    if (!name) return res.status(400).json({ error: "اسم القسم مطلوب" });
+    const { data, error } = await supabase.from("categories").insert({
+      name, image_url,
+      order_index: order_index ?? 0,
+      active: active ?? true,
+      special_id: special_id || null
+    }).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/admin/subcategories", async (req, res) => {
+  try {
+    let { category_id, category_special_id, name, image_url, order_index, active, special_id } = req.body;
+
+    if (!category_id && category_special_id) {
+      const { data: catBySpecial } = await supabase.from("categories").select("id").eq("special_id", category_special_id).maybeSingle();
+      if (catBySpecial) {
+        category_id = catBySpecial.id;
+      } else {
+        const { data: catById } = await supabase.from("categories").select("id").eq("id", category_special_id).maybeSingle();
+        if (catById) {
+          category_id = catById.id;
         } else {
-          // منتج عادي تمت الموافقة عليه
-          finalStatus = 'completed';
+          return res.status(404).json({ error: `لم يتم العثور على قسم رئيسي بالرقم: ${category_special_id}` });
         }
       }
-
-      // إذا كان الأدمن يرفض طلب
-      if (status === 'rejected') {
-        finalStatus = 'failed';
-        // إعادة الرصيد للمستخدم
-        const { data: userBalance } = await supabase.from("users").select("balance").eq("id", order.user_id).single();
-        if (userBalance) {
-          await supabase.from("users").update({ balance: userBalance.balance + order.total_amount }).eq("id", order.user_id);
-          updatedMeta = { ...updatedMeta, refunded: true, refunded_at: new Date().toISOString() };
-        }
-      }
-
-      const { error: oErr } = await supabase.from("orders").update({
-        status: finalStatus,
-        admin_response: responseText,
-        meta: JSON.stringify(updatedMeta)
-      }).eq("id", req.params.id);
-      if (oErr) throw oErr;
-
-      await supabase.from("notifications").insert({
-        user_id: order.user_id,
-        title: `تحديث حالة الطلب #${req.params.id}`,
-        message: finalStatus === 'failed'
-          ? `تم رفض طلبك #${req.params.id} وتم إعادة رصيدك. ${responseText || ""}`
-          : `حالة طلبك الآن: ${finalStatus}. ${responseText || ""}`,
-        type: finalStatus === 'completed' ? "success" : finalStatus === 'failed' ? "error" : "info"
-      });
-
-      if (order.user_id && responseText) {
-        sendTelegramToUser(order.user_id, `🔔 وصلك رد جديد على طلبك #${req.params.id}:\n\n${responseText}`);
-      }
-
-      res.json({ success: true, finalStatus });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
     }
-  });
 
-  app.get("/api/admin/transactions", async (req, res) => {
-    try {
-      const { data, error } = await supabase.from("transactions").select("*, users(name, personal_number), payment_methods(name)").order("created_at", { ascending: false });
-      if (error) throw error;
-      res.json(Array.isArray(data) ? data : []);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
+    if (!category_id) return res.status(400).json({ error: "يرجى تحديد القسم الرئيسي" });
 
-  app.post("/api/admin/transactions/:id/approve", async (req, res) => {
-    try {
-      const { data: tx, error: txErr } = await supabase.from("transactions").select("*").eq("id", req.params.id).single();
-      if (txErr || !tx) return res.status(404).json({ error: "Transaction not found" });
-      if (tx.status !== "pending") return res.status(400).json({ error: "Invalid transaction" });
+    const { data, error } = await supabase.from("subcategories").insert({
+      category_id, name, image_url,
+      order_index: order_index ?? 0,
+      active: active ?? true,
+      special_id: special_id || null
+    }).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-      await supabase.from("transactions").update({ status: "approved" }).eq("id", req.params.id);
-      await supabase.rpc("increment_balance", { user_id_param: tx.user_id, amount_param: tx.amount });
-      await supabase.from("user_stats").update({ total_recharge_sum: tx.amount }).eq("user_id", tx.user_id);
+app.post("/api/admin/sub-sub-categories", async (req, res) => {
+  try {
+    let { subcategory_id, subcategory_special_id, name, image_url, order_index, active, special_id } = req.body;
 
-      await supabase.from("notifications").insert({
-        user_id: tx.user_id,
-        title: "تم قبول الشحن",
-        message: `تمت إضافة ${tx.amount}$ إلى رصيدك بنجاح.`,
-        type: "success"
-      });
-
-      sendTelegramToUser(tx.user_id, `✅ تم قبول طلب الشحن الخاص بك! تم إضافة ${tx.amount}$ لرصيدك.`);
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post("/api/admin/transactions/:id/reject", async (req, res) => {
-    try {
-      await supabase.from("transactions").update({ status: "rejected" }).eq("id", req.params.id);
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post("/api/admin/offers", async (req, res) => {
-    try {
-      const { title, description, image_url, active } = req.body;
-      const { data, error } = await supabase.from("offers").insert({ title, description, image_url, active }).select().single();
-      if (error) throw error;
-      res.json(data);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.get("/api/admin/vouchers", async (req, res) => {
-    try {
-      const { data, error } = await supabase.from("vouchers").select("*").order("created_at", { ascending: false });
-      if (error) throw error;
-      res.json(Array.isArray(data) ? data : []);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post("/api/admin/vouchers", async (req, res) => {
-    try {
-      const { code, amount, max_uses } = req.body;
-      const { data, error } = await supabase.from("vouchers").insert({ code, amount, max_uses }).select().single();
-      if (error) throw error;
-      res.json(data);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post("/api/admin/banners", async (req, res) => {
-    try {
-      const { image_url, order_index } = req.body;
-      const { data, error } = await supabase.from("banners").insert({ image_url, order_index }).select().single();
-      if (error) throw error;
-      res.json(data);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post("/api/admin/categories", async (req, res) => {
-    try {
-      const { name, image_url, order_index, active, special_id } = req.body;
-      if (!name) return res.status(400).json({ error: "اسم القسم مطلوب" });
-      const { data, error } = await supabase.from("categories").insert({
-        name, image_url,
-        order_index: order_index ?? 0,
-        active: active ?? true,
-        special_id: special_id || null
-      }).select().single();
-      if (error) throw error;
-      res.json(data);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post("/api/admin/subcategories", async (req, res) => {
-    try {
-      let { category_id, category_special_id, name, image_url, order_index, active, special_id } = req.body;
-
-      // إذا أرسلت الواجهة category_special_id نبحث عن الـ id الحقيقي
-      if (!category_id && category_special_id) {
-        // البحث بـ special_id أولاً، ثم بالـ id المباشر
-        const { data: catBySpecial } = await supabase.from("categories").select("id").eq("special_id", category_special_id).maybeSingle();
-        if (catBySpecial) {
-          category_id = catBySpecial.id;
-        } else {
-          const { data: catById } = await supabase.from("categories").select("id").eq("id", category_special_id).maybeSingle();
-          if (catById) {
-            category_id = catById.id;
-          } else {
-            return res.status(404).json({ error: `لم يتم العثور على قسم رئيسي بالرقم: ${category_special_id}` });
-          }
-        }
-      }
-
-      if (!category_id) return res.status(400).json({ error: "يرجى تحديد القسم الرئيسي" });
-
-      const { data, error } = await supabase.from("subcategories").insert({
-        category_id, name, image_url,
-        order_index: order_index ?? 0,
-        active: active ?? true,
-        special_id: special_id || null
-      }).select().single();
-      if (error) throw error;
-      res.json(data);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post("/api/admin/sub-sub-categories", async (req, res) => {
-    try {
-      let { subcategory_id, subcategory_special_id, name, image_url, order_index, active, special_id } = req.body;
-
-      // إذا أرسل الـ id مباشرة نستخدمه
-      // إذا أرسل special_id نبحث به
-      if (!subcategory_id && subcategory_special_id) {
-        // محاولة البحث بـ special_id أولاً
-        const { data: subBySpecial } = await supabase.from("subcategories").select("id").eq("special_id", subcategory_special_id).maybeSingle();
-        if (subBySpecial) {
-          subcategory_id = subBySpecial.id;
-        } else {
-          // إذا ما لقيناه بـ special_id نحاول نتعامل معه كـ id مباشر
-          const { data: subById } = await supabase.from("subcategories").select("id").eq("id", subcategory_special_id).maybeSingle();
-          if (subById) {
-            subcategory_id = subById.id;
-          } else {
-            return res.status(404).json({ error: `لم يتم العثور على قسم فرعي بالرقم: ${subcategory_special_id}` });
-          }
-        }
-      }
-
-      if (!subcategory_id) return res.status(400).json({ error: "يرجى تحديد القسم الفرعي" });
-      if (!name) return res.status(400).json({ error: "اسم القسم الفرعي الفرعي مطلوب" });
-
-      const { data, error } = await supabase.from("sub_sub_categories").insert({
-        subcategory_id, name, image_url: image_url || "",
-        order_index: order_index ?? 0,
-        active: active ?? true,
-        special_id: special_id || null
-      }).select().single();
-      if (error) throw error;
-      res.json(data);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post("/api/admin/payment-methods", async (req, res) => {
-    try {
-      const { name, image_url, wallet_address, instructions, min_amount, active, method_type, api_account } = req.body;
-      const { data, error } = await supabase.from("payment_methods").insert({
-        name, image_url, wallet_address, instructions, min_amount, active,
-        method_type: method_type || "manual",
-        api_account: api_account || null
-      }).select().single();
-      if (error) throw error;
-      res.json(data);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post("/api/admin/products", async (req, res) => {
-    try {
-      let {
-        subcategory_id, sub_sub_category_id,
-        category_special_id, subcategory_special_id, sub_sub_category_special_id,
-        name, price, description, image_url, store_type, requires_input,
-        min_quantity, available, external_id, price_per_unit
-      } = req.body;
-
-      // If subcategory_id not set, try subcategory_special_id as direct ID first, then as special_id
-      if (!subcategory_id && subcategory_special_id) {
-        // Try as direct numeric ID first (from dropdown)
+    if (!subcategory_id && subcategory_special_id) {
+      const { data: subBySpecial } = await supabase.from("subcategories").select("id").eq("special_id", subcategory_special_id).maybeSingle();
+      if (subBySpecial) {
+        subcategory_id = subBySpecial.id;
+      } else {
         const { data: subById } = await supabase.from("subcategories").select("id").eq("id", subcategory_special_id).maybeSingle();
         if (subById) {
           subcategory_id = subById.id;
         } else {
-          // Try as special_id
-          const { data: subBySpecial } = await supabase.from("subcategories").select("id").eq("special_id", subcategory_special_id).maybeSingle();
-          if (subBySpecial) {
-            subcategory_id = subBySpecial.id;
-          } else {
-            return res.status(404).json({ error: `لم يتم العثور على قسم فرعي بالرقم: ${subcategory_special_id}` });
-          }
+          return res.status(404).json({ error: `لم يتم العثور على قسم فرعي بالرقم: ${subcategory_special_id}` });
         }
       }
+    }
 
-      if (!subcategory_id) return res.status(400).json({ error: "يرجى تحديد القسم الفرعي" });
+    if (!subcategory_id) return res.status(400).json({ error: "يرجى تحديد القسم الفرعي" });
+    if (!name) return res.status(400).json({ error: "اسم القسم الفرعي الفرعي مطلوب" });
 
-      // sub-sub-category: try direct ID then special_id
-      if (!sub_sub_category_id && sub_sub_category_special_id) {
-        const { data: ssByid } = await supabase.from("sub_sub_categories").select("id").eq("id", sub_sub_category_special_id).maybeSingle();
-        if (ssByid) {
-          sub_sub_category_id = ssByid.id;
+    const { data, error } = await supabase.from("sub_sub_categories").insert({
+      subcategory_id, name, image_url: image_url || "",
+      order_index: order_index ?? 0,
+      active: active ?? true,
+      special_id: special_id || null
+    }).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+  app.post("/api/admin/payment-methods", async (req, res) => {
+  try {
+    const { name, image_url, wallet_address, instructions, min_amount, active, method_type, api_account } = req.body;
+    const { data, error } = await supabase.from("payment_methods").insert({
+      name, image_url, wallet_address, instructions, min_amount, active,
+      method_type: method_type || "manual",
+      api_account: api_account || null
+    }).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/admin/products", async (req, res) => {
+  try {
+    let {
+      subcategory_id, sub_sub_category_id,
+      category_special_id, subcategory_special_id, sub_sub_category_special_id,
+      name, price, description, image_url, store_type, requires_input,
+      min_quantity, available, external_id, price_per_unit
+    } = req.body;
+
+    if (!subcategory_id && subcategory_special_id) {
+      const { data: subById } = await supabase.from("subcategories").select("id").eq("id", subcategory_special_id).maybeSingle();
+      if (subById) {
+        subcategory_id = subById.id;
+      } else {
+        const { data: subBySpecial } = await supabase.from("subcategories").select("id").eq("special_id", subcategory_special_id).maybeSingle();
+        if (subBySpecial) {
+          subcategory_id = subBySpecial.id;
         } else {
-          const { data: ss } = await supabase.from("sub_sub_categories").select("id").eq("special_id", sub_sub_category_special_id).maybeSingle();
-          if (ss) sub_sub_category_id = ss.id;
+          return res.status(404).json({ error: `لم يتم العثور على قسم فرعي بالرقم: ${subcategory_special_id}` });
         }
       }
-
-      const insertData: any = {
-        subcategory_id, sub_sub_category_id: sub_sub_category_id || null,
-        name, price: parseFloat(price) || 0,
-        description, image_url,
-        store_type: store_type || "normal",
-        requires_input: requires_input || false,
-        min_quantity: min_quantity ? parseInt(min_quantity) : null,
-        available: available ?? true,
-        external_id: external_id || null
-      };
-      if (price_per_unit !== undefined) insertData.price_per_unit = parseFloat(price_per_unit) || 0;
-
-      const { data, error } = await supabase.from("products").insert(insertData).select().single();
-      if (error) throw error;
-      res.json(data);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
     }
-  });
 
-  app.patch("/api/admin/products/:id/price", async (req, res) => {
-    try {
-      const { price, price_per_unit } = req.body;
-      const updateData: any = {};
-      if (price !== undefined) updateData.price = price;
-      if (price_per_unit !== undefined) updateData.price_per_unit = price_per_unit;
-      await supabase.from("products").update(updateData).eq("id", req.params.id);
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
+    if (!subcategory_id) return res.status(400).json({ error: "يرجى تحديد القسم الفرعي" });
 
-  // Generic product update - updates any provided product fields
-  app.patch("/api/admin/products/:id", async (req, res) => {
-    try {
-      const allowed = ["name","price","description","image_url","store_type","requires_input","min_quantity","available","external_id","price_per_unit","subcategory_id","sub_sub_category_id"];
-      const payload = req.body || {};
-      const updateData:any = {};
-      for (const k of Object.keys(payload)) {
-        if (allowed.includes(k)) {
-          // normalize numeric fields
-          if (["price","price_per_unit"].includes(k)) {
-            updateData[k] = parseFloat(payload[k]) || 0;
-          } else if (k === "min_quantity") {
-            updateData[k] = payload[k] !== null && payload[k] !== undefined && payload[k] !== "" ? parseInt(payload[k]) : null;
-          } else if (k === "requires_input" || k === "available") {
-            updateData[k] = payload[k] === true || payload[k] === "true" || payload[k] === 1 || payload[k] === "1";
-          } else if (["subcategory_id","sub_sub_category_id"].includes(k)) {
-            updateData[k] = payload[k] || null;
-          } else {
-            updateData[k] = payload[k];
-          }
-        }
+    if (!sub_sub_category_id && sub_sub_category_special_id) {
+      const { data: ssByid } = await supabase.from("sub_sub_categories").select("id").eq("id", sub_sub_category_special_id).maybeSingle();
+      if (ssByid) {
+        sub_sub_category_id = ssByid.id;
+      } else {
+        const { data: ss } = await supabase.from("sub_sub_categories").select("id").eq("special_id", sub_sub_category_special_id).maybeSingle();
+        if (ss) sub_sub_category_id = ss.id;
       }
-      if (Object.keys(updateData).length === 0) return res.status(400).json({ error: 'لا يوجد حقول صالحة للتحديث' });
-      const { error } = await supabase.from('products').update(updateData).eq('id', req.params.id);
-      if (error) throw error;
-      res.json({ success: true });
-    } catch (e:any) {
-      res.status(500).json({ error: e.message });
     }
-  });
 
+    const insertData: any = {
+      subcategory_id, sub_sub_category_id: sub_sub_category_id || null,
+      name, price: parseFloat(price) || 0,
+      description, image_url,
+      store_type: store_type || "normal",
+      requires_input: requires_input || false,
+      min_quantity: min_quantity ? parseInt(min_quantity) : null,
+      available: available ?? true,
+      external_id: external_id || null
+    };
+    if (price_per_unit !== undefined) insertData.price_per_unit = parseFloat(price_per_unit) || 0;
 
-  // PATCH - update any element
-  app.patch("/api/admin/categories/:id", async (req, res) => {
-    try {
-      const { name, image_url, special_id } = req.body;
-      const updateData: any = {};
-      if (name !== undefined) updateData.name = name;
-      if (image_url !== undefined) updateData.image_url = image_url;
-      if (special_id !== undefined) updateData.special_id = special_id;
-      const { error } = await supabase.from("categories").update(updateData).eq("id", req.params.id);
-      if (error) throw error;
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
+    const { data, error } = await supabase.from("products").insert(insertData).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-  app.patch("/api/admin/subcategories/:id", async (req, res) => {
-    try {
-      const { name, image_url, special_id, category_id } = req.body;
-      const updateData: any = {};
-      if (name !== undefined) updateData.name = name;
-      if (image_url !== undefined) updateData.image_url = image_url;
-      if (special_id !== undefined) updateData.special_id = special_id;
-      if (category_id !== undefined) updateData.category_id = category_id;
-      const { error } = await supabase.from("subcategories").update(updateData).eq("id", req.params.id);
-      if (error) throw error;
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
+app.patch("/api/admin/products/:id/price", async (req, res) => {
+  try {
+    const { price, price_per_unit } = req.body;
+    const updateData: any = {};
+    if (price !== undefined) updateData.price = price;
+    if (price_per_unit !== undefined) updateData.price_per_unit = price_per_unit;
+    await supabase.from("products").update(updateData).eq("id", req.params.id);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-  app.patch("/api/admin/sub-sub-categories/:id", async (req, res) => {
-    try {
-      const { name, image_url, special_id, subcategory_id } = req.body;
-      const updateData: any = {};
-      if (name !== undefined) updateData.name = name;
-      if (image_url !== undefined) updateData.image_url = image_url;
-      if (special_id !== undefined) updateData.special_id = special_id;
-      if (subcategory_id !== undefined) updateData.subcategory_id = subcategory_id;
-      const { error } = await supabase.from("sub_sub_categories").update(updateData).eq("id", req.params.id);
-      if (error) throw error;
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.patch("/api/admin/payment-methods/:id", async (req, res) => {
-    try {
-      const { name, image_url, wallet_address, min_amount, instructions } = req.body;
-      const updateData: any = {};
-      if (name !== undefined) updateData.name = name;
-      if (image_url !== undefined) updateData.image_url = image_url;
-      if (wallet_address !== undefined) updateData.wallet_address = wallet_address;
-      if (min_amount !== undefined) updateData.min_amount = parseFloat(min_amount);
-      if (instructions !== undefined) updateData.instructions = instructions;
-      const { error } = await supabase.from("payment_methods").update(updateData).eq("id", req.params.id);
-      if (error) throw error;
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.patch("/api/admin/banners/:id", async (req, res) => {
-    try {
-      const { image_url } = req.body;
-      const { error } = await supabase.from("banners").update({ image_url }).eq("id", req.params.id);
-      if (error) throw error;
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.patch("/api/admin/offers/:id", async (req, res) => {
-    try {
-      const { title, description, image_url } = req.body;
-      const updateData: any = {};
-      if (title !== undefined) updateData.title = title;
-      if (description !== undefined) updateData.description = description;
-      if (image_url !== undefined) updateData.image_url = image_url;
-      const { error } = await supabase.from("offers").update(updateData).eq("id", req.params.id);
-      if (error) throw error;
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.patch("/api/admin/vouchers/:id", async (req, res) => {
-    try {
-      const { code, amount, max_uses } = req.body;
-      const updateData: any = {};
-      if (code !== undefined) updateData.code = code;
-      if (amount !== undefined) updateData.amount = parseFloat(amount);
-      if (max_uses !== undefined) updateData.max_uses = parseInt(max_uses);
-      const { error } = await supabase.from("vouchers").update(updateData).eq("id", req.params.id);
-      if (error) throw error;
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  // ── DB Management ──
-  app.get("/api/admin/export-db", async (req, res) => {
-    try {
-      const tables = ["categories","subcategories","sub_sub_categories","products","banners","offers","payment_methods","vouchers","settings"];
-      const result: any = {};
-      for (const t of tables) {
-        const { data } = await supabase.from(t).select("*");
-        result[t] = data || [];
+// Generic product update - updates any provided product fields
+app.patch("/api/admin/products/:id", async (req, res) => {
+  try {
+    const allowed = ["name","price","description","image_url","store_type","requires_input","min_quantity","available","external_id","price_per_unit","subcategory_id","sub_sub_category_id"];
+    const payload = req.body || {};
+    const updateData: any = {};
+    for (const k of Object.keys(payload)) {
+      if (allowed.includes(k)) {
+        if (["price","price_per_unit"].includes(k)) updateData[k] = parseFloat(payload[k]) || 0;
+        else if (k === "min_quantity") updateData[k] = payload[k] !== null && payload[k] !== undefined && payload[k] !== "" ? parseInt(payload[k]) : null;
+        else if (k === "requires_input" || k === "available") updateData[k] = payload[k] === true || payload[k] === "true" || payload[k] === 1 || payload[k] === "1";
+        else if (["subcategory_id","sub_sub_category_id"].includes(k)) updateData[k] = payload[k] || null;
+        else updateData[k] = payload[k];
       }
-      res.json(result);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
+    }
+    if (Object.keys(updateData).length === 0) return res.status(400).json({ error: 'لا يوجد حقول صالحة للتحديث' });
+    const { error } = await supabase.from('products').update(updateData).eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-  app.post("/api/admin/import-db", async (req, res) => {
-    try {
-      const data = req.body;
-      const tableOrder = ["categories","subcategories","sub_sub_categories","products","banners","offers","payment_methods","vouchers","settings"];
-      for (const t of tableOrder) {
-        if (data[t] && Array.isArray(data[t]) && data[t].length > 0) {
-          await supabase.from(t).delete().neq("id", 0);
-          await supabase.from(t).insert(data[t]);
-        }
+app.patch("/api/admin/categories/:id", async (req, res) => {
+  try {
+    const { name, image_url, special_id } = req.body;
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (image_url !== undefined) updateData.image_url = image_url;
+    if (special_id !== undefined) updateData.special_id = special_id;
+    const { error } = await supabase.from("categories").update(updateData).eq("id", req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.patch("/api/admin/subcategories/:id", async (req, res) => {
+  try {
+    const { name, image_url, special_id, category_id } = req.body;
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (image_url !== undefined) updateData.image_url = image_url;
+    if (special_id !== undefined) updateData.special_id = special_id;
+    if (category_id !== undefined) updateData.category_id = category_id;
+    const { error } = await supabase.from("subcategories").update(updateData).eq("id", req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.patch("/api/admin/sub-sub-categories/:id", async (req, res) => {
+  try {
+    const { name, image_url, special_id, subcategory_id } = req.body;
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (image_url !== undefined) updateData.image_url = image_url;
+    if (special_id !== undefined) updateData.special_id = special_id;
+    if (subcategory_id !== undefined) updateData.subcategory_id = subcategory_id;
+    const { error } = await supabase.from("sub_sub_categories").update(updateData).eq("id", req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.patch("/api/admin/payment-methods/:id", async (req, res) => {
+  try {
+    const { name, image_url, wallet_address, min_amount, instructions } = req.body;
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (image_url !== undefined) updateData.image_url = image_url;
+    if (wallet_address !== undefined) updateData.wallet_address = wallet_address;
+    if (min_amount !== undefined) updateData.min_amount = parseFloat(min_amount);
+    if (instructions !== undefined) updateData.instructions = instructions;
+    const { error } = await supabase.from("payment_methods").update(updateData).eq("id", req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.patch("/api/admin/banners/:id", async (req, res) => {
+  try {
+    const { image_url } = req.body;
+    const { error } = await supabase.from("banners").update({ image_url }).eq("id", req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.patch("/api/admin/offers/:id", async (req, res) => {
+  try {
+    const { title, description, image_url } = req.body;
+    const updateData: any = {};
+    if (title !== undefined) updateData.title = title;
+    if (description !== undefined) updateData.description = description;
+    if (image_url !== undefined) updateData.image_url = image_url;
+    const { error } = await supabase.from("offers").update(updateData).eq("id", req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.patch("/api/admin/vouchers/:id", async (req, res) => {
+  try {
+    const { code, amount, max_uses } = req.body;
+    const updateData: any = {};
+    if (code !== undefined) updateData.code = code;
+    if (amount !== undefined) updateData.amount = parseFloat(amount);
+    if (max_uses !== undefined) updateData.max_uses = parseInt(max_uses);
+    const { error } = await supabase.from("vouchers").update(updateData).eq("id", req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── DB Management ──
+app.get("/api/admin/export-db", async (req, res) => {
+  try {
+    const tables = ["categories","subcategories","sub_sub_categories","products","banners","offers","payment_methods","vouchers","settings"];
+    const result: any = {};
+    for (const t of tables) {
+      const { data } = await supabase.from(t).select("*");
+      result[t] = data || [];
+    }
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/admin/import-db", async (req, res) => {
+  try {
+    const data = req.body;
+    const tableOrder = ["categories","subcategories","sub_sub_categories","products","banners","offers","payment_methods","vouchers","settings"];
+    for (const t of tableOrder) {
+      if (data[t] && Array.isArray(data[t]) && data[t].length > 0) {
+        await supabase.from(t).delete().neq("id", 0);
+        await supabase.from(t).insert(data[t]);
       }
-      res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
+    }
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
 
-  app.post("/api/admin/clear-db", async (req, res) => {
-    try {
-      const tables = ["products","sub_sub_categories","subcategories","categories","banners","offers","vouchers"];
-      for (const t of tables) await supabase.from(t).delete().neq("id", 0);
-      res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
+app.post("/api/admin/clear-db", async (req, res) => {
+  try {
+    const tables = ["products","sub_sub_categories","subcategories","categories","banners","offers","vouchers"];
+    for (const t of tables) await supabase.from(t).delete().neq("id", 0);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
 
-  app.post("/api/admin/sync-to-cloud", async (req, res) => {
-    try {
-      const tables = ["categories","subcategories","sub_sub_categories","products","banners","offers","payment_methods"];
-      const details: any = {};
-      for (const t of tables) {
-        const { error } = await supabase.from(t).select("id").limit(1);
-        details[t] = error ? `خطأ: ${error.message}` : "متزامن ✓";
-      }
-      res.json({ success: true, details });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
+app.post("/api/admin/sync-to-cloud", async (req, res) => {
+  try {
+    const tables = ["categories","subcategories","sub_sub_categories","products","banners","offers","payment_methods"];
+    const details: any = {};
+    for (const t of tables) {
+      const { error } = await supabase.from(t).select("id").limit(1);
+      details[t] = error ? `خطأ: ${error.message}` : "متزامن ✓";
+    }
+    res.json({ success: true, details });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
 
-  app.post("/api/report-error", async (req, res) => {
-    console.error("Client error:", req.body);
-    res.json({ ok: true });
-  });
-
-  app.delete("/api/admin/:type/:id", async (req, res) => {
+app.post("/api/report-error", async (req, res) => {
+  console.error("Client error:", req.body);
+  res.json({ ok: true });
+});
+    app.delete("/api/admin/:type/:id", async (req, res) => {
     try {
       const { type, id } = req.params;
 
@@ -2475,8 +2310,6 @@ async function startServer() {
   process.on("SIGTERM", shutdown);
   process.on("unhandledRejection", (reason, promise) => console.error("Unhandled Rejection:", promise, reason));
 }
-
-
 // ============================================================
 // HELPER: حذف مستخدم مع كل بياناته المرتبطة
 // ============================================================
@@ -2527,7 +2360,13 @@ async function applyReward(userId: string, goalIndex: number) {
     await supabase.from("user_stats").update({ profile_badge: "diamond", user_title: "أسطورة", custom_theme_color: "red", has_special_support: true }).eq("user_id", userId);
   } else if (goalIndex === 6) {
     // 🔥 لقب الأسطورة الخالدة + كل الثيمات + شارة أسطورية + أكواد مخصصة + دعم على مدار الساعة
-    await supabase.from("user_stats").update({ profile_badge: "legendary", user_title: "الأسطورة الخالدة", custom_theme_color: "any", has_special_support: true, has_priority_orders: true }).eq("user_id", userId);
+    await supabase.from("user_stats").update({ profile_badge: "legendary", user_title: "لقب الاسطورة", custom_theme_color: "any", has_special_support: true, has_priority_orders: true }).eq("user_id", userId);
+  } else if (goalIndex === 7) {
+    // مكافأة الهدف 1000$
+    await supabase.from("user_stats").update({ profile_badge: "mythic", user_title: "ملك الشحن", custom_theme_color: "purple", has_special_support: true, has_priority_orders: true }).eq("user_id", userId);
+  } else if (goalIndex === 8) {
+    // مكافأة الهدف 2000$
+    await supabase.from("user_stats").update({ profile_badge: "immortal", user_title: "نمبر 1", custom_theme_color: "rainbow", has_special_support: true, has_priority_orders: true }).eq("user_id", userId);
   }
 }
 
@@ -2655,7 +2494,6 @@ async function startBots() {
         userStates.set(msg.chat.id, { step: "admin_add_voucher_code", data: {} });
         adminBot!.sendMessage(msg.chat.id, "🎁 يرجى إدخال كود القسيمة:");
       });
-
       // دالة مساعدة لإرسال قائمة العناصر كأزرار
       const sendDeleteList = async (chatId: number, table: string, labelField: string, title: string, step: string, extraFields: string = "") => {
         const fields = `id, ${labelField}${extraFields ? ", " + extraFields : ""}`;
@@ -3223,10 +3061,7 @@ async function startBots() {
           const { data: v } = await supabase.from("vouchers").insert({ code: state.data.code, amount: state.data.amount, max_uses: parseInt(text) }).select().single();
           userStates.delete(chatId);
           adminBot!.sendMessage(chatId, `✅ تم إضافة القسيمة بنجاح! ID: ${v?.id}`);
-
         }
-        // حالات الحذف بعد كتابة ID يدوياً (fallback)
-        // هذه الحالات تُعالج الآن عبر callback_query
       });
 
     } catch (e) {
@@ -3254,8 +3089,6 @@ async function startBots() {
       }
     });
 
-    // /start
-    // --- Helper: check if user is member of the required channel ---
     const REQUIRED_CHANNEL = "@viprostore";
     async function isChannelMember(chatId: number): Promise<boolean> {
       try {
@@ -3332,7 +3165,7 @@ async function startBots() {
       }
     });
 
-    // User bot callback_query
+    // User bot callback_query and message handlers (remainder)
     userBot.on("callback_query", async (query) => {
       const chatId = query.message?.chat.id;
       if (!chatId) return;
@@ -3473,7 +3306,7 @@ async function startBots() {
         const { data: user } = await supabase.from("users").select("id").eq("telegram_chat_id", chatId).single();
         if (!user) return;
         const { data: stats } = await supabase.from("user_stats").select("*").eq("user_id", user.id).single();
-        const goals = [5, 15, 30, 50, 100, 200, 500];
+        const goals = [5, 15, 30, 50, 100, 200, 500, 1000, 2000];
         const rewards = [
           "خصم 1% لمدة شهر",
           "1$ رصيد + خصم 2% لمدة شهر",
@@ -3481,7 +3314,9 @@ async function startBots() {
           "5$ رصيد + خصم 5% لمدة سنة",
           "5$ رصيد + خصم 7% + كوبون 15% + شارة فضية",
           "10$ رصيد + خصم 10% + كوبون 15% + شارة ذهبية",
-          "20$ رصيد + خصم 10% + كوبون 20% + شارة ذهبية أسطورية + دعم خاص"
+          "20$ رصيد + خصم 10% + كوبون 20% + شارة ذهبية أسطورية + دعم خاص",
+          "30$ رصيد + خصم 15% + كوبون 25% + شارة أسطورية + أولوية خاصة",
+          "50$ رصيد + خصم 20% + كوبون 30% + شارة الأسطورة الخالدة + دعم على مدار الساعة"
         ];
 
         let text = `🎁 نظام المكافآت:\n\nإجمالي شحنك: ${(stats?.total_recharge_sum || 0).toFixed(2)}$\n\n`;
@@ -3503,7 +3338,7 @@ async function startBots() {
         const { data: user } = await supabase.from("users").select("id").eq("telegram_chat_id", chatId).single();
         if (!user) return;
         const { data: stats } = await supabase.from("user_stats").select("*").eq("user_id", user.id).single();
-        const goals = [5, 15, 30, 50, 100, 200, 500];
+        const goals = [5, 15, 30, 50, 100, 200, 500, 1000, 2000];
 
         if ((stats?.claimed_reward_index ?? -1) >= goalIndex) return userBot!.sendMessage(chatId, "❌ لقد استلمت هذه المكافأة مسبقاً.");
         if ((stats?.total_recharge_sum || 0) < goals[goalIndex]) return userBot!.sendMessage(chatId, "❌ لم تصل لهذا الهدف بعد.");
