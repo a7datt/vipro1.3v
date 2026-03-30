@@ -470,7 +470,7 @@ async function startServer() {
   app.post("/api/auth/register", async (req, res) => {
     const { name, email, password, phone, referralCode } = req.body;
     try {
-      let referredById2: number | null = null;
+      let referredById: number | null = null;
       if (referralCode) {
         const { data: referrer } = await supabase.from("users").select("id").eq("id", referralCode).single();
         if (referrer) {
