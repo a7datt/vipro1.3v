@@ -236,7 +236,7 @@ async function verifyShamCashTx(txNumber: string, accountAddress: string): Promi
 }
 
 // =================== AHMINIX API HELPERS ===================
-const AHMINIX_BASE = "https://store.ahminix.com/client/api";
+const AHMINIX_BASE = "https://fastcard1.store/client/api";
 const AHMINIX_TOKEN = process.env.AHMINIX_API_TOKEN || "";
 if (!AHMINIX_TOKEN) console.warn("[SECURITY] ⚠️  AHMINIX_API_TOKEN غير مضبوط في .env");
 
@@ -293,7 +293,7 @@ async function sendOtpEmail(to: string, otp: string, type: "verify" | "reset"): 
     <p style="color:#999;font-size:12px;margin:0">صالح لمدة 10 دقائق · لا تشاركه مع أحد</p>
   </div>
   <div style="background:#f8f8f8;padding:16px;text-align:center;border-top:1px solid #eee">
-    <p style="margin:0;font-size:11px;color:#bbb">إذا لم تطلب هذا الرمز، يمكنك تجاهل هذا البريد.</p>
+    <p style="margin:0;font-size:11px;color:#bbb">إذا لم تطلب هذا الرمز، يمكنك تجاهل هذا البريد. الدعم التقني https://wa.me/963982559890</p>
   </div>
 </div>
 </body>
