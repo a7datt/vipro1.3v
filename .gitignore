@@ -1,7 +1,0 @@
-
-# Security — never commit these
-.env
-.env.local
-.env.production
-node_modules/
-dist/
