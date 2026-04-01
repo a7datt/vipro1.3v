@@ -2617,7 +2617,9 @@ export default function App() {
                                   if (resData.stats) { setUser(prev => prev ? { ...prev, stats: resData.stats } : prev); // stats تبقى في React state }
                                   fetchUser(user.id);
                                 } else { alert(resData.error || "فشل استلام المكافأة"); }
-                              } catch { alert("خطأ في الاتصال"); }
+                              } catch (error) { 
+  alert("خطأ في الاتصال");
+                                }
                             }}
                             className="bg-brand text-white px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm active:scale-95 transition-all whitespace-nowrap"
                           >استلام 🎁</button>
