@@ -292,16 +292,6 @@ export function corsMiddleware(req: Request, res: Response, next: NextFunction) 
 //  الطبقة 10 — Auth Middlewares
 // ══════════════════════════════════════════════════════════════
 
-export function authenticate(req: Request, res: Response, next: NextFunction) {
-  const auth  = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : (req.headers["x-user-token"] as string||"");
-  if (!token) return res.status(401).json({ error:"غير مسموح: يجب تسجيل الدخول" });
-  const payload = verifyUserToken(token);
-  if (!payload) { strikeIp(getClientIp(req),"invalid-jwt",4); return res.status(401).json({ error:"الجلسة منتهية، يرجى تسجيل الدخول مجدداً" }); }
-  (req as any).userId   = payload.sub;
-  (req as any).clientIp = getClientIp(req);
-  next();
-}
 
 export function adminAuth(req: Request, res: Response, next: NextFunction) {
   const auth  = req.headers.authorization || "";
