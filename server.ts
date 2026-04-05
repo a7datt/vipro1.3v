@@ -4491,7 +4491,7 @@ async function startBots() {
 
     // /start
     // --- Helper: check if user is member of the required channel ---
-    const REQUIRED_CHANNEL = "@viprostore";
+    const REQUIRED_CHANNEL = "@syriabit";
     async function isChannelMember(chatId: number): Promise<boolean> {
       try {
         const res = await fetch(
@@ -4516,11 +4516,11 @@ async function startBots() {
       if (!isMember) {
         userBot!.sendMessage(
           chatId,
-          "⛔ يرجى الانضمام إلى قناتنا الرسمية أولاً ثم العودة والضغط على /start\n\n📢 القناة: https://t.me/viprostore",
+          "⛔ يرجى الانضمام إلى قناتنا الرسمية أولاً ثم العودة والضغط على /start\n\n📢 القناة: https://t.me/syriabit",
           {
             reply_markup: {
               inline_keyboard: [
-                [{ text: "📢 الانضمام إلى القناة", url: "https://t.me/viprostore" }],
+                [{ text: "📢 الانضمام إلى القناة", url: "https://t.me/syriabit" }],
                 [{ text: "✅ انضممت، ابدأ من جديد", callback_data: "recheck_membership" }]
               ]
             }
@@ -4581,11 +4581,11 @@ async function startBots() {
         if (!isMember) {
           userBot!.sendMessage(
             chatId,
-            "❌ لم يتم التحقق من انضمامك للقناة بعد.\nيرجى الانضمام أولاً ثم المحاولة مرة أخرى.\n\n📢 https://t.me/viprostore",
+            "❌ لم يتم التحقق من انضمامك للقناة بعد.\nيرجى الانضمام أولاً ثم المحاولة مرة أخرى.\n\n📢 https://t.me/syriabit",
             {
               reply_markup: {
                 inline_keyboard: [
-                  [{ text: "📢 الانضمام إلى القناة", url: "https://t.me/viprostore" }],
+                  [{ text: "📢 الانضمام إلى القناة", url: "https://t.me/syriabit" }],
                   [{ text: "✅ انضممت، ابدأ من جديد", callback_data: "recheck_membership" }]
                 ]
               }
