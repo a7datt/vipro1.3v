@@ -1,12 +1,11 @@
 @import "tailwindcss";
-
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --color-brand: #B00000;
   --color-brand-light: #fef2f2;
   --color-brand-soft: #fee2e2;
 }
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
 /* ===== متغيرات الثيم الرئيسية — غيّر هنا فقط ===== */
 :root {
   --brand: #B00000;
