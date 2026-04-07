@@ -1,7 +1,6 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Cairo", ui-sans-serif, system-ui, sans-serif;
   --color-brand: #B00000;
   --color-brand-light: #fef2f2;
   --color-brand-soft: #fee2e2;
@@ -34,7 +33,7 @@
   }
 }
 body {
-  font-family: 'Cairo', sans-serif;
+    font-family: "Cairo", ui-sans-serif, system-ui, sans-serif;
 }
 .splash-screen {
   position: fixed;
