@@ -2630,7 +2630,7 @@ async function startServer() {
         .from("orders")
         .select(`
           *,
-          users(name, email),
+          users(id, name, email, phone, avatar_url),
           order_items(
             *,
             products(
@@ -2651,6 +2651,10 @@ async function startServer() {
         return {
           ...order,
           user_name: order.users?.name || "مستخدم محذوف",
+          user_email: order.users?.email || "—",
+          user_phone: order.users?.phone || "—",
+          user_db_id: order.users?.id || order.user_id,
+          user_avatar: order.users?.avatar_url || null,
           product_name: product?.name || "منتج محذوف",
           category_name: product?.subcategories?.categories?.name || null,
           subcategory_name: product?.subcategories?.name || null,
@@ -2768,9 +2772,21 @@ async function startServer() {
 
   app.get("/api/admin/transactions", async (req, res) => {
     try {
-      const { data, error } = await supabase.from("transactions").select("*, users(name), payment_methods(name)").order("created_at", { ascending: false });
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("*, users(id, name, email, phone), payment_methods(name)")
+        .order("created_at", { ascending: false });
       if (error) throw error;
-      res.json(Array.isArray(data) ? data : []);
+      // flatten user info
+      const enriched = (data || []).map((t: any) => ({
+        ...t,
+        user_name: t.users?.name || "—",
+        user_email: t.users?.email || "—",
+        user_phone: t.users?.phone || "—",
+        user_db_id: t.users?.id || t.user_id,
+        payment_method_name: t.payment_methods?.name || "—",
+      }));
+      res.json(enriched);
     } catch (e: any) {
       safeError(res, e);
     }
@@ -2782,19 +2798,25 @@ async function startServer() {
       if (txErr || !tx) return res.status(404).json({ error: "Transaction not found" });
       if (tx.status !== "pending") return res.status(400).json({ error: "Invalid transaction" });
 
-      await supabase.from("transactions").update({ status: "approved" }).eq("id", req.params.id);
-      await supabase.rpc("increment_balance", { user_id_param: tx.user_id, amount_param: tx.amount });
-      await supabase.from("user_stats").update({ total_recharge_sum: tx.amount }).eq("user_id", tx.user_id);
+      // دعم تغيير المبلغ من الأدمن
+      const customAmount = req.body?.custom_amount;
+      const finalAmount = (customAmount !== undefined && !isNaN(parseFloat(customAmount)) && parseFloat(customAmount) > 0)
+        ? parseFloat(customAmount)
+        : tx.amount;
+
+      await supabase.from("transactions").update({ status: "approved", amount: finalAmount }).eq("id", req.params.id);
+      await supabase.rpc("increment_balance", { user_id_param: tx.user_id, amount_param: finalAmount });
+      await supabase.from("user_stats").update({ total_recharge_sum: finalAmount }).eq("user_id", tx.user_id);
 
       await supabase.from("notifications").insert({
         user_id: tx.user_id,
         title: "تم قبول الشحن",
-        message: `تمت إضافة ${tx.amount}$ إلى رصيدك بنجاح.`,
+        message: `تمت إضافة ${finalAmount}$ إلى رصيدك بنجاح.`,
         type: "success"
       });
 
-      sendTelegramToUser(tx.user_id, `✅ تم قبول طلب الشحن الخاص بك! تم إضافة ${tx.amount}$ لرصيدك.`);
-      res.json({ success: true });
+      sendTelegramToUser(tx.user_id, `✅ تم قبول طلب الشحن الخاص بك! تم إضافة ${finalAmount}$ لرصيدك.`);
+      res.json({ success: true, finalAmount });
     } catch (e: any) {
       safeError(res, e);
     }
