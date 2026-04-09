@@ -447,8 +447,10 @@ async function ahminixCheckOrder(orderId: string, isUuid = false): Promise<any> 
  */
 function mapAhminixStatus(apiStatus: string): "completed" | "cancelled" | "processing" {
   const s = (apiStatus || "").toLowerCase().trim();
-  if (s === "accept" || s === "completed") return "completed";
-  if (s === "reject" || s === "rejected" || s === "cancelled") return "cancelled";
+  // مكتمل
+  if (["accept","accepted","completed","done","success","approved","finish","finished","delivered"].includes(s)) return "completed";
+  // مرفوض
+  if (["reject","rejected","cancelled","failed","declined","denied","refused"].includes(s)) return "cancelled";
   return "processing";
 }
 
@@ -457,7 +459,8 @@ function mapAhminixStatus(apiStatus: string): "completed" | "cancelled" | "proce
  */
 function isAhminixFinalStatus(apiStatus: string): boolean {
   const s = (apiStatus || "").toLowerCase().trim();
-  return s === "accept" || s === "completed" || s === "reject" || s === "rejected" || s === "cancelled";
+  return ["accept","accepted","completed","done","success","approved","finish","finished","delivered",
+          "reject","rejected","cancelled","failed","declined","denied","refused"].includes(s);
 }
 
 /**
@@ -2503,16 +2506,16 @@ async function startServer() {
       // جلب الطلبات المقبولة مع تفاصيل المنتجات
       const { data: acceptedOrders } = await supabase
         .from("orders")
-        .select("id, total_amount, created_at, order_items(price_at_purchase, quantity, products(price, external_id))")
-        .eq("status", "accepted")
+        .select("id, total_amount, created_at, order_items(price_at_purchase, quantity, products(price, price_per_unit, external_id))")
+        .eq("status", "completed")
         .gte("created_at", fromIso)
         .lte("created_at", toIso);
 
-      // جلب الطلبات المرفوضة
+      // جلب الطلبات المرفوضة (تشمل جميع حالات الرفض)
       const { count: rejectedCount } = await supabase
         .from("orders")
         .select("id", { count: "exact", head: true })
-        .eq("status", "rejected")
+        .in("status", ["rejected", "failed", "cancelled"])
         .gte("created_at", fromIso)
         .lte("created_at", toIso);
 
@@ -2524,19 +2527,22 @@ async function startServer() {
         .gte("created_at", fromIso)
         .lte("created_at", toIso);
 
-      const grossRevenue = (acceptedOrders || []).reduce((sum: number, o: any) => sum + (o.total_amount || 0), 0);
-      const totalPayments = (payments || []).reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
-
-      // حساب تكلفة API من سعر المنتج الأصلي (price_at_purchase = سعر البيع، نفترض ربح = إيراد - تكلفة API)
-      // نجلب سعر API من بيانات المنتج (products.price = سعر التكلفة من الـ API)
+      // Fix 6: حساب التكلفة والربح بشكل صحيح
+      // تكلفة API = price_per_unit × الكمية (سعر شراء من الـ API)
+      // سعر البيع = price_at_purchase × الكمية (سعر البيع للمستخدم)
       let apiCost = 0;
+      let grossRevenue = 0;
       for (const order of (acceptedOrders || [])) {
         for (const item of (order.order_items || [])) {
-          const productApiPrice = item.products?.price || 0;
-          apiCost += productApiPrice * (item.quantity || 1);
+          const qty = item.quantity || 1;
+          const sellPrice = parseFloat(item.price_at_purchase || "0");
+          const costPrice = parseFloat(item.products?.price_per_unit || item.products?.price || "0");
+          grossRevenue += sellPrice * qty;
+          apiCost += costPrice * qty;
         }
       }
 
+      const totalPayments = (payments || []).reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
       const profit = grossRevenue - apiCost;
       const profitMargin = grossRevenue > 0 ? (profit / grossRevenue) * 100 : 0;
 
@@ -2690,19 +2696,33 @@ async function startServer() {
           console.log(`[API] Admin approved order #${order.id} - sending to API`);
           const apiRes = await ahminixCreateOrder(String(product.external_id), qty, playerId, orderUuid);
 
+          // Fix 1: رد 400 من السيرفر → نُعيد خطأ واضح للأدمن
           if (!apiRes || apiRes.status !== "OK") {
             const errMsg = apiRes?.message || apiRes?.error || "فشل إرسال الطلب للـ API";
-            return res.status(400).json({ error: errMsg });
+            // تحقق خاص من حالة "لا يوجد رصيد"
+            const isLowBalance = typeof errMsg === "string" && (
+              errMsg.toLowerCase().includes("balance") ||
+              errMsg.toLowerCase().includes("insufficient") ||
+              errMsg.toLowerCase().includes("رصيد") ||
+              errMsg.toLowerCase().includes("credit")
+            );
+            return res.status(400).json({
+              error: isLowBalance ? "❌ رصيد API غير كافٍ — يرجى شحن حساب Ahminix" : errMsg
+            });
           }
+
+          const ahminixRawStatus = apiRes.data?.status || "";
+          const mappedStatus = mapAhminixStatus(ahminixRawStatus);
 
           updatedMeta = {
             ...updatedMeta,
             ahminix_order_id: apiRes.data?.order_id,
-            ahminix_status: apiRes.data?.status,
+            ahminix_status: ahminixRawStatus,
             ahminix_replay: apiRes.data?.replay_api || [],
             admin_approved_at: new Date().toISOString()
           };
-          finalStatus = apiRes.data?.status === 'accept' ? 'completed' : 'processing';
+          // Fix 3: استخدام mapAhminixStatus بدل المقارنة اليدوية
+          finalStatus = mappedStatus === "completed" ? "completed" : "processing";
         } else {
           // منتج عادي تمت الموافقة عليه
           finalStatus = 'completed';
