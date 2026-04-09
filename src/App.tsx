@@ -1428,10 +1428,10 @@ export default function App() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-4 gap-3">
           {subcategories.map(sub => (
             <motion.button 
-              whileTap={{ scale: 0.98 }}
+              whileTap={{ scale: 0.95 }}
               key={sub.id}
               onClick={async () => {
                 setPageLoading(true);
@@ -1444,15 +1444,12 @@ export default function App() {
                 }
                 setPageLoading(false);
               }}
-              className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between hover:border-brand-soft"
+              className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center overflow-hidden active:scale-95 transition-transform"
             >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden">
-                  <img src={sub.image_url || "https://picsum.photos/seed/sub/100/100"} alt={sub.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                </div>
-                <span className="font-bold text-gray-700">{sub.name}</span>
+              <div className="w-full aspect-square overflow-hidden bg-gray-50">
+                <img src={sub.image_url || "https://picsum.photos/seed/sub/100/100"} alt={sub.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               </div>
-              <ChevronRight size={20} className="text-gray-300" />
+              <span className="font-bold text-gray-700 text-[9px] text-center w-full px-1 py-1.5 leading-tight">{sub.name}</span>
             </motion.button>
           ))}
         </div>
@@ -1473,10 +1470,10 @@ export default function App() {
 
         {/* Sub-sub-categories */}
         {subSubCategories.length > 0 && (
-          <div className="grid grid-cols-1 gap-3">
+          <div className="grid grid-cols-4 gap-3">
             {subSubCategories.map(ss => (
               <motion.button
-                whileTap={{ scale: 0.98 }}
+                whileTap={{ scale: 0.95 }}
                 key={ss.id}
                 onClick={async () => {
                   setPageLoading(true);
@@ -1484,15 +1481,12 @@ export default function App() {
                   setView({ type: "products", id: ss.id, data: ss.name, fromSubSub: true, subId: view.id, subName: view.data, catId: view.catId });
                   setPageLoading(false);
                 }}
-                className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between hover:border-brand-soft"
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center overflow-hidden active:scale-95 transition-transform"
               >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden">
-                    <img src={ss.image_url || "https://picsum.photos/seed/ss/100/100"} alt={ss.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  </div>
-                  <span className="font-bold text-gray-700">{ss.name}</span>
+                <div className="w-full aspect-square overflow-hidden bg-gray-50">
+                  <img src={ss.image_url || "https://picsum.photos/seed/ss/100/100"} alt={ss.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 </div>
-                <ChevronRight size={20} className="text-gray-300" />
+                <span className="font-bold text-gray-700 text-[9px] text-center w-full px-1 py-1.5 leading-tight">{ss.name}</span>
               </motion.button>
             ))}
           </div>
@@ -5429,23 +5423,32 @@ const AdminStatsTab = ({ adminFetch }: { adminFetch: any }) => {
                 <p className="font-bold text-amber-800">صافي الأرباح</p>
               </div>
               <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">
-                معدل: {stats.profit_margin?.toFixed(1)}%
+                هامش: {stats.profit_margin?.toFixed(1)}%
               </span>
             </div>
-            <p className="text-3xl font-black text-amber-700">{stats.profit?.toFixed(2)} $</p>
-            <div className="mt-3 bg-white/60 rounded-xl p-3">
+            <p className={`text-3xl font-black ${(stats.profit || 0) >= 0 ? "text-amber-700" : "text-red-600"}`}>
+              {(stats.profit || 0) >= 0 ? "+" : ""}{(stats.profit || 0).toFixed(2)} $
+            </p>
+            <div className="mt-3 bg-white/60 rounded-xl p-3 space-y-1.5">
               <div className="flex justify-between text-[11px]">
-                <span className="text-gray-500">الإيرادات الإجمالية</span>
-                <span className="font-bold text-gray-700">{stats.gross_revenue?.toFixed(2)} $</span>
+                <span className="text-gray-500">سعر البيع (إيرادات)</span>
+                <span className="font-bold text-green-600">+ {(stats.gross_revenue || 0).toFixed(2)} $</span>
               </div>
-              <div className="flex justify-between text-[11px] mt-1">
-                <span className="text-gray-500">تكلفة API</span>
-                <span className="font-bold text-red-500">- {stats.api_cost?.toFixed(2)} $</span>
+              <div className="flex justify-between text-[11px]">
+                <span className="text-gray-500">تكلفة API (سعر الشراء)</span>
+                <span className="font-bold text-red-500">- {(stats.api_cost || 0).toFixed(2)} $</span>
               </div>
-              <div className="border-t border-gray-100 mt-2 pt-2 flex justify-between text-[11px]">
+              <div className="border-t border-gray-200 pt-1.5 flex justify-between text-[11px]">
                 <span className="font-bold text-gray-700">صافي الربح</span>
-                <span className="font-black text-green-600">{stats.profit?.toFixed(2)} $</span>
+                <span className={`font-black ${(stats.profit || 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {(stats.profit || 0) >= 0 ? "+" : ""}{(stats.profit || 0).toFixed(2)} $
+                </span>
               </div>
+              {(stats.orders_without_cost > 0) && (
+                <p className="text-[9px] text-amber-600 bg-amber-50 rounded-lg px-2 py-1 mt-1">
+                  ⚠️ {stats.orders_without_cost} طلب بدون سعر تكلفة (price_per_unit = 0) — تحقق من إعداد المنتجات
+                </p>
+              )}
             </div>
           </div>
 
