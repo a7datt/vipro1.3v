@@ -5614,6 +5614,7 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
   const [modeLoading, setModeLoading] = React.useState(false);
   const [modeLoaded, setModeLoaded] = React.useState(false);
   const [expandedOrderId, setExpandedOrderId] = React.useState<number|null>(null);
+  const [overridePlayerIds, setOverridePlayerIds] = React.useState<Record<number, string>>({});
   React.useEffect(() => {
   fetch("/api/settings").then(r => r.json()).then((data: any[]) => {
   const s = data.find((x: any) => x.key === "order_processing_mode");
@@ -5628,7 +5629,10 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
   setModeLoading(false);
   };
   const handleOrderAction = async (orderId: number, action: "approved" | "rejected", adminResp?: string) => {
-  const res = await adminFetch(`/api/admin/orders/${orderId}/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: action, admin_response: adminResp || "" }) });
+  const overrideId = overridePlayerIds[orderId]?.trim() || undefined;
+  const body: any = { status: action, admin_response: adminResp || "" };
+  if (action === "approved" && overrideId) body.override_player_id = overrideId;
+  const res = await adminFetch(`/api/admin/orders/${orderId}/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const data = await res.json();
   if (!res.ok) {
     let msg = data.error || "حدث خطأ أثناء المعالجة";
@@ -5674,12 +5678,31 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
         {pendingAdminOrders.map(order => {
           let metaParsed: any = {};
           try { metaParsed = JSON.parse(order.meta || "{}"); } catch {}
+          const savedPlayerId = metaParsed.playerId || metaParsed.input || metaParsed.player_id || "";
+          const lastError = metaParsed.last_api_error || "";
           return (
             <div key={order.id} className="border border-amber-100 rounded-xl bg-amber-50/40 p-4 space-y-3">
               <div>
                 <p className="font-bold text-sm text-[var(--brand)]">#{order.id} - {order.product_name}</p>
-                <p className="text-xs text-gray-500">{order.user_name} · {(order.total_price || 0).toFixed(2)} $</p>
-                {metaParsed.player_id && <p className="text-xs text-gray-600">ID: {metaParsed.player_id}</p>}
+                <p className="text-xs text-gray-500">{order.user_name} · {(order.total_amount || order.total_price || 0).toFixed(2)} $</p>
+                {savedPlayerId && (
+                  <p className="text-xs text-gray-600 mt-1 font-mono break-all">
+                    <span className="font-bold text-gray-500">Player ID: </span>{savedPlayerId}
+                  </p>
+                )}
+                {lastError && (
+                  <p className="text-xs text-red-500 mt-1 bg-red-50 rounded-lg px-2 py-1">⚠️ {lastError}</p>
+                )}
+              </div>
+              <div>
+                <p className="text-[10px] text-gray-400 mb-1">تعديل Player ID قبل القبول (اختياري)</p>
+                <input
+                  type="text"
+                  placeholder={savedPlayerId || "أدخل Player ID..."}
+                  value={overridePlayerIds[order.id] ?? ""}
+                  onChange={e => setOverridePlayerIds(prev => ({ ...prev, [order.id]: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none focus:border-[var(--brand)] font-mono"
+                />
               </div>
               <div className="flex gap-2">
                 <button onClick={() => handleOrderAction(order.id, "approved")} className="flex-1 bg-green-500 text-white py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1"><CheckCircle size={12}/>قبول</button>
