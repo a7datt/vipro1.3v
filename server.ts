@@ -2702,7 +2702,7 @@ async function startServer() {
 
   app.post("/api/admin/orders/:id/status", async (req, res) => {
     try {
-      const { status, response, admin_response } = req.body;
+      const { status, response, admin_response, override_player_id } = req.body;
       const responseText = response || admin_response;
 
       // جلب بيانات الطلب الكاملة
@@ -2716,6 +2716,10 @@ async function startServer() {
       let metaParsed: any = {};
       try { metaParsed = JSON.parse(order.meta || "{}"); } catch {}
 
+      // استخراج extra_data من order_items كـ fallback
+      let itemExtraParsed: any = {};
+      try { itemExtraParsed = JSON.parse(order.order_items?.[0]?.extra_data || "{}"); } catch {}
+
       let finalStatus = status;
       let updatedMeta = { ...metaParsed };
 
@@ -2726,7 +2730,15 @@ async function startServer() {
           if (!AHMINIX_TOKEN) {
             return res.status(500).json({ error: "AHMINIX_API_TOKEN غير مضبوط" });
           }
-          const playerId = metaParsed?.playerId || metaParsed?.input || "";
+          // الأولوية: override من الأدمن ← meta ← extra_data من order_items
+          const playerId = (
+            (override_player_id && String(override_player_id).trim()) ||
+            metaParsed?.playerId ||
+            metaParsed?.input ||
+            itemExtraParsed?.playerId ||
+            itemExtraParsed?.input ||
+            ""
+          ).toString().trim();
           const qty = order.order_items?.[0]?.quantity || 1;
           const orderUuid = `vipronea-admin-${order.id}-${Date.now()}`;
 
