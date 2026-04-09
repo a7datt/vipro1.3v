@@ -445,22 +445,81 @@ async function ahminixCheckOrder(orderId: string, isUuid = false): Promise<any> 
  * يُحوّل حالة Ahminix الخام إلى حالة داخلية
  * API قد يُرجع: "accept"/"completed" → completed | "reject"/"rejected"/"cancelled" → cancelled | غير ذلك → processing
  */
-function mapAhminixStatus(apiStatus: string): "completed" | "cancelled" | "processing" {
+/**
+ * normalizeOrderStatus — تطبيع حالة الطلب بصرامة
+ * أي حالة غامضة أو غير صريحة = processing (لا نحكم بالرفض إلا بتأكيد مزدوج)
+ */
+function normalizeOrderStatus(apiStatus: string): "completed" | "cancelled" | "processing" {
   const s = (apiStatus || "").toLowerCase().trim();
-  // مكتمل
-  if (["accept","accepted","completed","done","success","approved","finish","finished","delivered"].includes(s)) return "completed";
-  // مرفوض
-  if (["reject","rejected","cancelled","failed","declined","denied","refused"].includes(s)) return "cancelled";
+  if (!s) return "processing";
+
+  const acceptedKeywords = ["accept","accepted","completed","done","success","approved","finish","finished","delivered"];
+  const rejectedKeywords = ["reject","rejected","cancel","cancelled","failed","error","denied","declined","refused"];
+
+  // قبول: أي كلمة من القائمة كافية
+  if (acceptedKeywords.some(k => s.includes(k))) return "completed";
+
+  // رفض: يجب أن تكون واضحة وصريحة
+  if (rejectedKeywords.some(k => s.includes(k))) return "cancelled";
+
+  // أي حالة غير معروفة = قيد المعالجة (لا نحكم بالرفض)
   return "processing";
 }
 
+/** للتوافق مع الاستدعاءات القديمة */
+const mapAhminixStatus = normalizeOrderStatus;
+
 /**
- * هل الحالة الخام نهائية (مكتملة أو مرفوضة)؟
+ * هل الحالة الخام نهائية (مكتملة أو مرفوضة بتأكيد)؟
  */
 function isAhminixFinalStatus(apiStatus: string): boolean {
-  const s = (apiStatus || "").toLowerCase().trim();
-  return ["accept","accepted","completed","done","success","approved","finish","finished","delivered",
-          "reject","rejected","cancelled","failed","declined","denied","refused"].includes(s);
+  const status = normalizeOrderStatus(apiStatus);
+  return status === "completed" || status === "cancelled";
+}
+
+/**
+ * getFinalOrderStatus — يحاول 3 مرات قبل الحكم بالرفض
+ * إذا كانت النتيجة "cancelled" يتحقق مرة إضافية قبل اعتمادها
+ */
+async function getFinalOrderStatus(
+  checkFn: () => Promise<any>,
+  maxAttempts = 3,
+  delayMs = 2000
+): Promise<{ status: "completed" | "cancelled" | "processing"; raw: string; data: any }> {
+  let lastRaw = "";
+  let lastData: any = null;
+
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const res = await checkFn();
+      const ext = res?.data?.[0];
+      if (!ext) {
+        if (i < maxAttempts - 1) { await new Promise(r => setTimeout(r, delayMs)); continue; }
+        return { status: "processing", raw: "", data: null };
+      }
+      lastRaw = ext.status || "";
+      lastData = ext;
+      const normalized = normalizeOrderStatus(lastRaw);
+
+      // قبول → نخرج فوراً
+      if (normalized === "completed") return { status: "completed", raw: lastRaw, data: ext };
+
+      // قيد المعالجة → نحاول مرة أخرى
+      if (normalized === "processing") {
+        if (i < maxAttempts - 1) { await new Promise(r => setTimeout(r, delayMs)); continue; }
+        return { status: "processing", raw: lastRaw, data: ext };
+      }
+
+      // مرفوض → لا نؤكد إلا في المحاولة الأخيرة
+      if (normalized === "cancelled") {
+        if (i < maxAttempts - 1) { await new Promise(r => setTimeout(r, delayMs)); continue; }
+        return { status: "cancelled", raw: lastRaw, data: ext };
+      }
+    } catch {
+      if (i < maxAttempts - 1) { await new Promise(r => setTimeout(r, delayMs)); continue; }
+    }
+  }
+  return { status: "processing", raw: lastRaw, data: lastData };
 }
 
 /**
@@ -1386,28 +1445,31 @@ async function startServer() {
       const ahminixId   = meta.ahminix_order_id;
       const ahminixUuid = meta.ahminix_order_uuid;
 
-      // نحاول بالـ UUID أولاً ثم الـ numeric ID
-      let checkRes: any = null;
-      if (ahminixUuid && ahminixUuid !== ahminixId) {
-        checkRes = await ahminixCheckOrder(ahminixUuid, true);
-        if (checkRes?.status !== "OK" || !checkRes?.data?.[0]) checkRes = null;
-      }
-      if (!checkRes && ahminixId) {
-        const isUuid = String(ahminixId).includes("-");
-        checkRes = await ahminixCheckOrder(ahminixId, isUuid);
-      }
+      // دالة الجلب مع fallback UUID → numeric
+      const doCheck = async () => {
+        let r: any = null;
+        if (ahminixUuid && ahminixUuid !== ahminixId) {
+          r = await ahminixCheckOrder(ahminixUuid, true);
+          if (r?.status !== "OK" || !r?.data?.[0]) r = null;
+        }
+        if (!r && ahminixId) {
+          r = await ahminixCheckOrder(ahminixId, String(ahminixId).includes("-"));
+        }
+        return r;
+      };
 
-      if (!checkRes?.data?.[0]) return res.json({ status: "processing", replay_api: [] });
+      // استخدام getFinalOrderStatus مع إعادة محاولة قبل الحكم بالرفض
+      const { status: newStatus, raw: rawStatus, data: ext } = await getFinalOrderStatus(doCheck, 3, 1500);
 
-      const ext = checkRes.data[0];
+      if (!ext) return res.json({ status: "processing", replay_api: [] });
+
       const normalizedReplay = normalizeReplayApi(ext.replay_api);
 
-      // إذا اكتمل → حدّث قاعدة البيانات
-      if (isAhminixFinalStatus(ext.status)) {
-        const newStatus = mapAhminixStatus(ext.status);
+      // تحديث DB فقط إذا الحالة نهائية
+      if (newStatus === "completed" || newStatus === "cancelled") {
         const updatedMeta = {
           ...meta,
-          ahminix_status: ext.status,
+          ahminix_status: rawStatus,
           ahminix_replay: normalizedReplay,
           completed_at: new Date().toISOString()
         };
@@ -1423,7 +1485,6 @@ async function startServer() {
           });
         }
 
-        // إشعار push للمستخدم
         const notifTitle = newStatus === "completed" ? "✅ تم تنفيذ طلبك!" : "❌ تم إلغاء طلبك";
         const notifBody = newStatus === "completed"
           ? `تم تنفيذ طلب ${meta?.product_name || ""} بنجاح`
@@ -1435,7 +1496,7 @@ async function startServer() {
         });
       }
 
-      res.json({ status: ext.status, replay_api: normalizedReplay });
+      res.json({ status: rawStatus || "processing", replay_api: normalizedReplay });
     } catch (e: any) {
       safeError(res, e);
     }
@@ -1750,22 +1811,21 @@ async function startServer() {
       const ahminixUuid = meta?.ahminix_order_uuid;
       if (!ahminixId && !ahminixUuid) return res.status(400).json({ error: "الطلب ليس خارجياً" });
 
-      let checkRes: any = null;
-      if (ahminixUuid && ahminixUuid !== String(ahminixId)) {
-        checkRes = await ahminixCheckOrder(ahminixUuid, true);
-        if (checkRes?.status !== "OK" || !checkRes?.data?.[0]) checkRes = null;
-      }
-      if (!checkRes && ahminixId) {
-        const isUuid = String(ahminixId).includes("-");
-        checkRes = await ahminixCheckOrder(ahminixId, isUuid);
-      }
-      if (!checkRes?.data?.[0]) return res.json({ status: "OK", message: "لا استجابة من API", raw: checkRes });
+      const doCheck = async () => {
+        let r: any = null;
+        if (ahminixUuid && ahminixUuid !== String(ahminixId)) {
+          r = await ahminixCheckOrder(ahminixUuid, true);
+          if (r?.status !== "OK" || !r?.data?.[0]) r = null;
+        }
+        if (!r && ahminixId) r = await ahminixCheckOrder(ahminixId, String(ahminixId).includes("-"));
+        return r;
+      };
 
-      const ext = checkRes.data[0];
+      const { status: newStatus, raw: rawStatus, data: ext } = await getFinalOrderStatus(doCheck, 3, 1500);
+      if (!ext) return res.json({ status: "OK", message: "لا استجابة من API" });
+
       const normalizedReplay = normalizeReplayApi(ext.replay_api);
-      const newStatus = mapAhminixStatus(ext.status);
-
-      const updatedMeta = { ...meta, ahminix_status: ext.status, ahminix_replay: normalizedReplay, synced_at: new Date().toISOString() };
+      const updatedMeta = { ...meta, ahminix_status: rawStatus, ahminix_replay: normalizedReplay, synced_at: new Date().toISOString() };
       await supabase.from("orders").update({ status: newStatus, meta: JSON.stringify(updatedMeta) }).eq("id", order.id);
 
       if (newStatus === "cancelled" && order.status !== "cancelled") {
@@ -1777,7 +1837,7 @@ async function startServer() {
         await supabase.from("notifications").insert({ user_id: order.user_id, title: notifTitle, message: notifBody, type: newStatus === "completed" ? "success" : "warning" });
       }
 
-      res.json({ status: "OK", oldStatus: order.status, newStatus, ahminixStatus: ext.status, replay: normalizedReplay });
+      res.json({ status: "OK", oldStatus: order.status, newStatus, ahminixStatus: rawStatus, replay: normalizedReplay });
     } catch (e: any) {
       safeError(res, e);
     }
@@ -1815,35 +1875,29 @@ async function startServer() {
           const meta = typeof order.meta === "string" ? JSON.parse(order.meta) : order.meta;
           const ahminixId   = meta?.ahminix_order_id;
           const ahminixUuid = meta?.ahminix_order_uuid;
-          if (!ahminixId) continue; // طلب محلي، تجاهل
+          if (!ahminixId) continue;
 
-          // نحاول بالـ UUID أولاً ثم الـ numeric ID (نفس منطق check-external)
-          let checkRes: any = null;
-          if (ahminixUuid && ahminixUuid !== String(ahminixId)) {
-            checkRes = await ahminixCheckOrder(ahminixUuid, true);
-            if (checkRes?.status !== "OK" || !checkRes?.data?.[0]) checkRes = null;
-          }
-          if (!checkRes) {
-            const isUuid = String(ahminixId).includes("-");
-            checkRes = await ahminixCheckOrder(ahminixId, isUuid);
-          }
+          const doCheck = async () => {
+            let r: any = null;
+            if (ahminixUuid && ahminixUuid !== String(ahminixId)) {
+              r = await ahminixCheckOrder(ahminixUuid, true);
+              if (r?.status !== "OK" || !r?.data?.[0]) r = null;
+            }
+            if (!r) r = await ahminixCheckOrder(ahminixId, String(ahminixId).includes("-"));
+            return r;
+          };
 
-          if (checkRes?.status !== "OK" || !checkRes?.data?.[0]) continue;
+          const { status: newStatus, raw: rawStatus, data: ext } = await getFinalOrderStatus(doCheck, 3, 1000);
+          if (!ext) continue;
 
-          const externalOrder = checkRes.data[0];
-          const rawReplay = externalOrder.replay_api;
-          const normalizedReplay = (Array.isArray(rawReplay) ? rawReplay : rawReplay ? [rawReplay] : [])
-            .filter(Boolean).map(String);
-
-          const newStatus = mapAhminixStatus(externalOrder.status);
+          const normalizedReplay = normalizeReplayApi(ext.replay_api);
 
           if (newStatus !== order.status) {
             await supabase.from("orders").update({
               status: newStatus,
-              meta: JSON.stringify({ ...meta, ahminix_status: externalOrder.status, ahminix_replay: normalizedReplay, completed_at: new Date().toISOString() })
+              meta: JSON.stringify({ ...meta, ahminix_status: rawStatus, ahminix_replay: normalizedReplay, completed_at: new Date().toISOString() })
             }).eq("id", order.id);
 
-            // إعادة رصيد المستخدم إذا أُلغي
             if (newStatus === "cancelled") {
               await supabase.rpc("increment_balance", {
                 user_id_param: order.user_id,
@@ -1852,7 +1906,7 @@ async function startServer() {
             }
 
             updated++;
-            results.push({ orderId: order.id, ahminixId, oldStatus: order.status, newStatus, replayCount: normalizedReplay.length });
+            results.push({ orderId: order.id, ahminixId, oldStatus: order.status, newStatus, rawStatus, replayCount: normalizedReplay.length });
           } else {
             results.push({ orderId: order.id, ahminixId, status: newStatus, note: "no change" });
           }
@@ -2536,10 +2590,10 @@ async function startServer() {
       const fromIso = fromDate.toISOString();
       const toIso = toDate.toISOString();
 
-      // جلب الطلبات المقبولة مع تفاصيل المنتجات
+      // جلب الطلبات المقبولة مع تفاصيل المنتجات (نجلب extra_data أيضاً للحصول على سعر التكلفة)
       const { data: acceptedOrders } = await supabase
         .from("orders")
-        .select("id, total_amount, created_at, order_items(price_at_purchase, quantity, products(price, price_per_unit, external_id))")
+        .select("id, total_amount, created_at, order_items(price_at_purchase, quantity, extra_data, products(price, price_per_unit, external_id, store_type))")
         .eq("status", "completed")
         .gte("created_at", fromIso)
         .lte("created_at", toIso);
@@ -2560,22 +2614,36 @@ async function startServer() {
         .gte("created_at", fromIso)
         .lte("created_at", toIso);
 
-      // Fix 6: حساب التكلفة والربح بشكل صحيح
-      // تكلفة API = price_per_unit × الكمية (سعر شراء من الـ API)
-      // سعر البيع = price_at_purchase × الكمية (سعر البيع للمستخدم)
+      // حساب صافي الربح:
+      // الإيراد = price_at_purchase × الكمية (السعر الذي دفعه المستخدم)
+      // التكلفة = price_per_unit × الكمية (سعر الشراء من API)
+      // صافي الربح = الإيراد - التكلفة
       let apiCost = 0;
       let grossRevenue = 0;
+      let ordersWithCost = 0;
+      let ordersWithoutCost = 0;
+
       for (const order of (acceptedOrders || [])) {
         for (const item of (order.order_items || [])) {
-          const qty = item.quantity || 1;
-          const sellPrice = parseFloat(item.price_at_purchase || "0");
-          const costPrice = parseFloat(item.products?.price_per_unit || item.products?.price || "0");
+          const qty = Number(item.quantity) || 1;
+          const sellPrice = parseFloat(item.price_at_purchase ?? "0") || 0;
+
+          // سعر التكلفة: price_per_unit هو سعر API الفعلي
+          // إذا كان null أو 0 (منتجات غير API) → التكلفة = 0
+          const rawCost = item.products?.price_per_unit;
+          const costPrice = (rawCost !== null && rawCost !== undefined && rawCost !== "")
+            ? (parseFloat(String(rawCost)) || 0)
+            : 0;
+
           grossRevenue += sellPrice * qty;
           apiCost += costPrice * qty;
+
+          if (costPrice > 0) ordersWithCost++;
+          else ordersWithoutCost++;
         }
       }
 
-      const totalPayments = (payments || []).reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
+      const totalPayments = (payments || []).reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
       const profit = grossRevenue - apiCost;
       const profitMargin = grossRevenue > 0 ? (profit / grossRevenue) * 100 : 0;
 
@@ -2587,6 +2655,8 @@ async function startServer() {
         api_cost: apiCost,
         profit,
         profit_margin: profitMargin,
+        orders_with_cost: ordersWithCost,
+        orders_without_cost: ordersWithoutCost,
         from: fromIso,
         to: toIso,
       });
@@ -3650,23 +3720,23 @@ async function startServer() {
           const ahminixUuid = meta?.ahminix_order_uuid;
           if (!ahminixId && !ahminixUuid) continue;
 
-          // نحاول بالـ UUID أولاً (أكثر موثوقية)، ثم بالـ numeric ID
-          let checkRes: any = null;
-          if (ahminixUuid && ahminixUuid !== String(ahminixId)) {
-            checkRes = await ahminixCheckOrder(ahminixUuid, true);
-            if (checkRes?.status !== "OK" || !checkRes?.data?.[0]) {
-              checkRes = null;
+          // دالة الجلب مع fallback
+          const doCheck = async () => {
+            let r: any = null;
+            if (ahminixUuid && ahminixUuid !== String(ahminixId)) {
+              r = await ahminixCheckOrder(ahminixUuid, true);
+              if (r?.status !== "OK" || !r?.data?.[0]) r = null;
             }
-          }
-          if (!checkRes && ahminixId) {
-            const isUuid = String(ahminixId).includes("-");
-            checkRes = await ahminixCheckOrder(ahminixId, isUuid);
-          }
+            if (!r && ahminixId) {
+              r = await ahminixCheckOrder(ahminixId, String(ahminixId).includes("-"));
+            }
+            return r;
+          };
 
-          if (checkRes?.status !== "OK" || !checkRes?.data?.[0]) continue;
+          // استخدام getFinalOrderStatus — لا نحكم بالرفض إلا بعد 3 محاولات
+          const { status: newStatus, raw: rawStatus, data: ext } = await getFinalOrderStatus(doCheck, 3, 1000);
 
-          const ext = checkRes.data[0];
-          const newStatus = mapAhminixStatus(ext.status);
+          if (!ext) continue;
 
           // إذا لا يزال في معالجة ولم يتغير → تخطَّ
           const currentIsProcessing = ["processing", "pending"].includes(order.status);
@@ -3678,7 +3748,7 @@ async function startServer() {
           if (newStatus !== order.status) {
             const updatedMeta = {
               ...meta,
-              ahminix_status: ext.status,
+              ahminix_status: rawStatus,
               ahminix_replay: normalizedReplay,
               completed_at: new Date().toISOString()
             };
@@ -3729,7 +3799,7 @@ async function startServer() {
               }
             }
 
-            console.log(`[AUTO-REFRESH] Order #${order.id}: ${order.status} → ${newStatus}, replay=${normalizedReplay.length}`);
+            console.log(`[AUTO-REFRESH] Order #${order.id}: ${order.status} → ${newStatus} (API: ${rawStatus}), replay=${normalizedReplay.length}`);
           }
         } catch (e: any) {
           console.error(`[AUTO-REFRESH] Error on order #${order.id}:`, e.message);
