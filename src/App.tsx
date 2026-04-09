@@ -5638,18 +5638,19 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
   const res = await adminFetch(`/api/admin/orders/${orderId}/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const data = await res.json();
   if (!res.ok) {
-    let msg = data.error || "حدث خطأ أثناء المعالجة";
-    if (data.details) {
-      msg += `\n\nتفاصيل:\n• external_id: ${data.details.external_id}\n• Player ID: ${data.details.playerId || "(فارغ)"}\n• الكمية: ${data.details.qty}\n• كود الخطأ: ${data.details.code || "—"}`;
-    }
-    msg += "\n\nالطلب بقي معلقاً — يمكنك المحاولة مجدداً بعد إصلاح المشكلة.";
-    alert(msg);
+    // خطأ حقيقي في السيرفر (ليس خطأ API)
+    alert(data.error || "حدث خطأ في السيرفر");
     fetchAdminOrders();
     return;
   }
   if (action === "approved") {
-    const label = data.finalStatus === "completed" ? "✅ تم التنفيذ بنجاح" : "⏳ تم الإرسال — قيد المعالجة";
-    alert(label);
+    if (data.finalStatus === "completed") {
+      alert("✅ تم التنفيذ بنجاح");
+    } else if (data.apiError) {
+      alert(`⏳ تم إرسال الطلب — قيد المعالجة\n\nملاحظة: ${data.apiError}`);
+    } else {
+      alert("⏳ تم الإرسال — قيد المعالجة");
+    }
   }
   fetchAdminOrders();
   };
