@@ -471,6 +471,26 @@ async function ahminixGetProducts(): Promise<any[]> {
   return Array.isArray(data) ? data : [];
 }
 
+// ============================================================
+// خريطة منع الطلبات المكررة: key = "userId-productId-qty-playerId"
+// نحتفظ بالطلب لمدة 10 ثوانٍ لرفض أي طلب مطابق في تلك المدة
+// ============================================================
+const recentOrdersMap = new Map<string, number>();
+function isDuplicateOrder(userId: string, productId: string, qty: number, playerId: string): boolean {
+  const key = `${userId}-${productId}-${qty}-${playerId}`;
+  const last = recentOrdersMap.get(key);
+  const now = Date.now();
+  if (last && now - last < 10_000) return true; // مكرر خلال 10 ثوانٍ
+  recentOrdersMap.set(key, now);
+  // تنظيف المدخلات القديمة تلقائياً
+  if (recentOrdersMap.size > 500) {
+    for (const [k, t] of recentOrdersMap.entries()) {
+      if (now - t > 10_000) recentOrdersMap.delete(k);
+    }
+  }
+  return false;
+}
+
 /**
  * يجلب رصيد ومعلومات حساب Ahminix
  */
@@ -1110,13 +1130,24 @@ async function startServer() {
       // Validation
       if (!isValidId(productId))   return res.status(400).json({ error: "معرف المنتج غير صحيح" });
       const safeQty = Math.floor(Number(quantity));
-      if (!isValidQuantity(safeQty, 100)) return res.status(400).json({ error: "الكمية يجب أن تكون بين 1 و 100" });
-      // use safeQty below instead of quantity
+      if (!Number.isInteger(safeQty) || safeQty < 1) return res.status(400).json({ error: "الكمية غير صحيحة" });
 
       const { data: user, error: uErr } = await supabase.from("users").select("*").eq("id", userId).single();
       if (uErr) throw uErr;
       const { data: product, error: pErr } = await supabase.from("products").select("*").eq("id", productId).single();
       if (pErr) throw pErr;
+
+      // التحقق من الكمية باستخدام حدود المنتج الفعلية
+      const productMaxQty = product?.max_quantity || 100_000;
+      const productMinQty = product?.min_quantity || 1;
+      if (safeQty < productMinQty) return res.status(400).json({ error: `أقل كمية مسموح بها: ${productMinQty}` });
+      if (safeQty > productMaxQty) return res.status(400).json({ error: `أكبر كمية مسموح بها: ${productMaxQty}` });
+
+      // فحص الطلبات المكررة (نفس البيانات خلال 10 ثوانٍ)
+      const playerIdForDedup = (extraData?.playerId || extraData?.input || "").toString().trim();
+      if (isDuplicateOrder(String(userId), String(productId), safeQty, playerIdForDedup)) {
+        return res.status(429).json({ error: "طلب مكرر — يرجى الانتظار قليلاً قبل المحاولة مجدداً" });
+      }
 
       if (!user || !product) return res.status(404).json({ error: "Not found" });
       // تحقق من أن المستخدم لم يُحظر
@@ -1542,6 +1573,7 @@ async function startServer() {
             subcategory_id: subcategoryId,
             sub_sub_category_id: subSubCategoryId ? subSubCategoryId : null,
             min_quantity: ap.qty_values?.min || 1,
+            max_quantity: ap.qty_values?.max || null,
             image_url: override.image_url || globalImageUrl || ""
           };
 
@@ -1552,6 +1584,7 @@ async function startServer() {
               price_per_unit: productData.price_per_unit,
               available: productData.available,
               min_quantity: productData.min_quantity,
+              max_quantity: productData.max_quantity,
               subcategory_id: subcategoryId,
               sub_sub_category_id: subSubCategoryId ? subSubCategoryId : null
             };
@@ -2700,19 +2733,32 @@ async function startServer() {
           console.log(`[API] Admin approved order #${order.id} - sending to API`);
           const apiRes = await ahminixCreateOrder(String(product.external_id), qty, playerId, orderUuid);
 
-          // Fix 1: رد 400 من السيرفر → نُعيد خطأ واضح للأدمن
+          // معالجة أخطاء API بشكل واضح
           if (!apiRes || apiRes.status !== "OK") {
             const errMsg = apiRes?.message || apiRes?.error || "فشل إرسال الطلب للـ API";
-            // تحقق خاص من حالة "لا يوجد رصيد"
+            const errCode = apiRes?.code || apiRes?.error_code || 0;
+            const adminErrorCodes: Record<number, string> = {
+              100: "❌ رصيد API غير كافٍ — يرجى شحن حساب Ahminix",
+              105: "❌ الكمية غير متوفرة حالياً",
+              106: "❌ الكمية غير مسموح بها لهذا المنتج",
+              112: "❌ الكمية أقل من الحد الأدنى المسموح",
+              113: "❌ الكمية تتجاوز الحد الأقصى المسموح",
+              114: "❌ بيانات اللاعب غير صحيحة — تحقق من الـ Player ID في الطلب",
+              120: "❌ رمز API مطلوب — تحقق من AHMINIX_API_TOKEN",
+              121: "❌ رمز API خاطئ",
+              122: "❌ غير مسموح باستخدام API",
+              123: "❌ عنوان IP غير مسموح به في Ahminix",
+              130: "❌ موقع Ahminix تحت الصيانة",
+            };
             const isLowBalance = typeof errMsg === "string" && (
               errMsg.toLowerCase().includes("balance") ||
               errMsg.toLowerCase().includes("insufficient") ||
               errMsg.toLowerCase().includes("رصيد") ||
               errMsg.toLowerCase().includes("credit")
             );
-            return res.status(400).json({
-              error: isLowBalance ? "❌ رصيد API غير كافٍ — يرجى شحن حساب Ahminix" : errMsg
-            });
+            const finalErrMsg = adminErrorCodes[errCode]
+              || (isLowBalance ? "❌ رصيد API غير كافٍ — يرجى شحن حساب Ahminix" : `❌ ${errMsg}`);
+            return res.status(400).json({ error: finalErrMsg });
           }
 
           const ahminixRawStatus = apiRes.data?.status || "";
@@ -2994,7 +3040,7 @@ async function startServer() {
         subcategory_id, sub_sub_category_id,
         category_special_id, subcategory_special_id, sub_sub_category_special_id,
         name, price, description, image_url, store_type, requires_input,
-        min_quantity, available, external_id, price_per_unit
+        min_quantity, max_quantity, available, external_id, price_per_unit
       } = req.body;
 
       // ── Validation ──
@@ -3052,6 +3098,7 @@ async function startServer() {
         store_type: store_type || "normal",
         requires_input: requires_input || false,
         min_quantity: min_quantity ? parseInt(min_quantity) : null,
+        max_quantity: max_quantity ? parseInt(max_quantity) : null,
         available: available ?? true,
         external_id: external_id || null
       };
@@ -3081,7 +3128,7 @@ async function startServer() {
   // Generic product update - updates any provided product fields
   app.patch("/api/admin/products/:id", async (req, res) => {
     try {
-      const allowed = ["name","price","description","image_url","store_type","requires_input","min_quantity","available","external_id","price_per_unit","subcategory_id","sub_sub_category_id"];
+      const allowed = ["name","price","description","image_url","store_type","requires_input","min_quantity","max_quantity","available","external_id","price_per_unit","subcategory_id","sub_sub_category_id"];
       const payload = req.body || {};
       const updateData:any = {};
       for (const k of Object.keys(payload)) {
@@ -3089,7 +3136,7 @@ async function startServer() {
           // normalize numeric fields
           if (["price","price_per_unit"].includes(k)) {
             updateData[k] = parseFloat(payload[k]) || 0;
-          } else if (k === "min_quantity") {
+          } else if (k === "min_quantity" || k === "max_quantity") {
             updateData[k] = payload[k] !== null && payload[k] !== undefined && payload[k] !== "" ? parseInt(payload[k]) : null;
           } else if (k === "requires_input" || k === "available") {
             updateData[k] = payload[k] === true || payload[k] === "true" || payload[k] === 1 || payload[k] === "1";
