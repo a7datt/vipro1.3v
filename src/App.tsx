@@ -5631,11 +5631,17 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
   const res = await adminFetch(`/api/admin/orders/${orderId}/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: action, admin_response: adminResp || "" }) });
   const data = await res.json();
   if (!res.ok) {
-    alert(`❌ ${data.error || "حدث خطأ أثناء المعالجة"}`);
+    let msg = data.error || "حدث خطأ أثناء المعالجة";
+    if (data.details) {
+      msg += `\n\nتفاصيل:\n• external_id: ${data.details.external_id}\n• Player ID: ${data.details.playerId || "(فارغ)"}\n• الكمية: ${data.details.qty}\n• كود الخطأ: ${data.details.code || "—"}`;
+    }
+    msg += "\n\nالطلب بقي معلقاً — يمكنك المحاولة مجدداً بعد إصلاح المشكلة.";
+    alert(msg);
+    fetchAdminOrders();
     return;
   }
   if (action === "approved") {
-    const label = data.finalStatus === "completed" ? "✅ تم التنفيذ بنجاح" : "⏳ قيد المعالجة";
+    const label = data.finalStatus === "completed" ? "✅ تم التنفيذ بنجاح" : "⏳ تم الإرسال — قيد المعالجة";
     alert(label);
   }
   fetchAdminOrders();
