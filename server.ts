@@ -2730,25 +2730,26 @@ async function startServer() {
           const qty = order.order_items?.[0]?.quantity || 1;
           const orderUuid = `vipronea-admin-${order.id}-${Date.now()}`;
 
-          console.log(`[API] Admin approved order #${order.id} - sending to API`);
+          console.log(`[API] Admin approved order #${order.id} | ext_id=${product.external_id} | qty=${qty} | playerId="${playerId}"`);
           const apiRes = await ahminixCreateOrder(String(product.external_id), qty, playerId, orderUuid);
+          console.log(`[API] Ahminix response:`, JSON.stringify(apiRes));
 
           // معالجة أخطاء API بشكل واضح
           if (!apiRes || apiRes.status !== "OK") {
             const errMsg = apiRes?.message || apiRes?.error || "فشل إرسال الطلب للـ API";
-            const errCode = apiRes?.code || apiRes?.error_code || 0;
+            const errCode = Number(apiRes?.code || apiRes?.error_code || 0);
             const adminErrorCodes: Record<number, string> = {
-              100: "❌ رصيد API غير كافٍ — يرجى شحن حساب Ahminix",
-              105: "❌ الكمية غير متوفرة حالياً",
-              106: "❌ الكمية غير مسموح بها لهذا المنتج",
-              112: "❌ الكمية أقل من الحد الأدنى المسموح",
-              113: "❌ الكمية تتجاوز الحد الأقصى المسموح",
-              114: "❌ بيانات اللاعب غير صحيحة — تحقق من الـ Player ID في الطلب",
-              120: "❌ رمز API مطلوب — تحقق من AHMINIX_API_TOKEN",
-              121: "❌ رمز API خاطئ",
-              122: "❌ غير مسموح باستخدام API",
-              123: "❌ عنوان IP غير مسموح به في Ahminix",
-              130: "❌ موقع Ahminix تحت الصيانة",
+              100: "رصيد API غير كافٍ — يرجى شحن حساب Ahminix",
+              105: "الكمية غير متوفرة حالياً",
+              106: "الكمية غير مسموح بها لهذا المنتج",
+              112: "الكمية أقل من الحد الأدنى المسموح",
+              113: "الكمية تتجاوز الحد الأقصى المسموح",
+              114: `بيانات اللاعب غير صحيحة — Player ID: "${playerId}"`,
+              120: "رمز API مطلوب — تحقق من AHMINIX_API_TOKEN",
+              121: "رمز API خاطئ",
+              122: "غير مسموح باستخدام API",
+              123: "عنوان IP غير مسموح به في Ahminix",
+              130: "موقع Ahminix تحت الصيانة",
             };
             const isLowBalance = typeof errMsg === "string" && (
               errMsg.toLowerCase().includes("balance") ||
@@ -2756,9 +2757,30 @@ async function startServer() {
               errMsg.toLowerCase().includes("رصيد") ||
               errMsg.toLowerCase().includes("credit")
             );
-            const finalErrMsg = adminErrorCodes[errCode]
-              || (isLowBalance ? "❌ رصيد API غير كافٍ — يرجى شحن حساب Ahminix" : `❌ ${errMsg}`);
-            return res.status(400).json({ error: finalErrMsg });
+            const friendlyMsg = adminErrorCodes[errCode]
+              || (isLowBalance ? "رصيد API غير كافٍ — يرجى شحن حساب Ahminix"
+              : errMsg);
+
+            // نُحدّث meta فقط بالخطأ ونُبقي الطلب pending_admin ليتمكن الأدمن من المحاولة مجدداً
+            await supabase.from("orders").update({
+              meta: JSON.stringify({
+                ...updatedMeta,
+                last_api_error: friendlyMsg,
+                last_api_error_at: new Date().toISOString(),
+                last_api_raw: JSON.stringify(apiRes)
+              })
+            }).eq("id", req.params.id);
+
+            return res.status(400).json({
+              error: `❌ ${friendlyMsg}`,
+              details: {
+                code: errCode,
+                raw: errMsg,
+                playerId,
+                external_id: product.external_id,
+                qty
+              }
+            });
           }
 
           const ahminixRawStatus = apiRes.data?.status || "";
