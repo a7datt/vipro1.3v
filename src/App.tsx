@@ -1746,10 +1746,10 @@ export default function App() {
   const CheckoutView = () => {
     const prod = view.data || (checkoutOrderResult?.prod);
     const qtyRef = React.useRef<HTMLInputElement>(null);
-    const extraRef = React.useRef<HTMLInputElement>(null);
     const [displayQty, setDisplayQty] = React.useState<string>(
       (prod.store_type === 'quantities' || prod.store_type === 'external_api') ? (String(checkoutQuantity || prod.min_quantity || 1)) : "1"
     );
+    const [extraInput, setExtraInput] = React.useState<string>("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const orderResult = checkoutOrderResult;
@@ -1767,10 +1767,12 @@ export default function App() {
 
     const handlePurchase = async () => {
       if (!user) return;
-      const extraData = extraRef.current?.value || "";
-      const quantity = parseFloat(qtyRef.current?.value || "1") || 1;
+      if (loading) return; // منع الضغط المزدوج
+      const extraData = extraInput.trim();
+      const quantity = parseFloat(qtyRef.current?.value || String(displayQty) || "1") || 1;
       if (prod.requires_input && !extraData) return setError("يرجى إدخال البيانات المطلوبة");
       if ((prod.store_type === 'quantities' || prod.store_type === 'external_api') && quantity < (prod.min_quantity || 1)) return setError(`أقل كمية مسموحة هي ${prod.min_quantity}`);
+      if (prod.max_quantity && quantity > prod.max_quantity) return setError(`أكبر كمية مسموحة هي ${prod.max_quantity}`);
       setCheckoutQuantity(quantity);
       setLoading(true);
       try {
@@ -1956,13 +1958,14 @@ export default function App() {
             <div className="space-y-2">
               <label className="text-sm font-bold text-gray-700">
                 الكمية المطلوبة
-                {prod.min_quantity ? ` (أقل كمية: ${prod.min_quantity})` : ""}
+                {prod.min_quantity || prod.max_quantity ? ` (${prod.min_quantity ? `أقل: ${prod.min_quantity}` : ""}${prod.min_quantity && prod.max_quantity ? " — " : ""}${prod.max_quantity ? `أكثر: ${prod.max_quantity}` : ""})` : ""}
               </label>
               <input
                 ref={qtyRef}
                 type="number"
                 min={prod.min_quantity || 1}
-                defaultValue={displayQty}
+                max={prod.max_quantity || undefined}
+                value={displayQty}
                 onChange={(e) => setDisplayQty(e.target.value)}
                 className={`w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:${theme.border} transition-colors`}
               />
@@ -1974,9 +1977,9 @@ export default function App() {
             <div className="space-y-2">
               <label className="text-sm font-bold text-gray-700">رقم الهاتف</label>
               <input
-                ref={extraRef}
                 type="tel"
-                defaultValue=""
+                value={extraInput}
+                onChange={(e) => setExtraInput(e.target.value)}
                 placeholder="أدخل رقم هاتفك هنا..."
                 className={`w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:${theme.border} transition-colors`}
               />
@@ -1990,9 +1993,9 @@ export default function App() {
                 {prod.params?.[0] || "معرف اللاعب (Player ID)"} *
               </label>
               <input
-                ref={extraRef}
                 type="text"
-                defaultValue=""
+                value={extraInput}
+                onChange={(e) => setExtraInput(e.target.value)}
                 placeholder={`أدخل ${prod.params?.[0] || "معرف اللاعب"} هنا...`}
                 className={`w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-blue-400 transition-colors text-center font-bold text-lg`}
               />
@@ -2005,9 +2008,9 @@ export default function App() {
             <div className="space-y-2">
               <label className="text-sm font-bold text-gray-700">معرف اللاعب / رقم الحساب / رقم الهاتف للرصيد</label>
               <input
-                ref={extraRef}
                 type="text"
-                defaultValue=""
+                value={extraInput}
+                onChange={(e) => setExtraInput(e.target.value)}
                 placeholder="أدخل البيانات هنا..."
                 className={`w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:${theme.border} transition-colors`}
               />
@@ -2630,7 +2633,7 @@ export default function App() {
         const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, { method: "POST", body: formData });
         const data = await res.json();
         if (data.success) {
-          const token = localStorage.getItem("token") || "";
+          const token = localStorage.getItem("authToken") || "";
           const updateRes = await fetch(`/api/user/${user?.id}/avatar`, {
             method: "PATCH",
             headers: {
@@ -5996,7 +5999,7 @@ const AdminElementsTab = ({categories, subcategories, subSubCategories, fetchCat
                 <AdminImageUpload label="صورة المنتج" currentUrl={editingItem.image_url||""} onUpload={url => setEditingItem({...editingItem,image_url:url})}/>
                 <select className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none" value={editingItem.store_type||"normal"} onChange={e => setEditingItem({...editingItem,store_type:e.target.value})}><option value="normal">متجر عادي</option><option value="quick_order">طلب سريع</option><option value="quantities">متجر الكميات</option><option value="numbers">متجر الأرقام</option><option value="external_api">شحن فوري (API خارجي)</option></select>
                 {(editingItem.store_type==='quantities'||editingItem.store_type==='external_api') ? (
-                  <div className="space-y-2 p-3 bg-gray-50 rounded-xl"><input type="number" placeholder="أقل كمية" className="w-full p-2 bg-white rounded-lg text-sm outline-none" value={editingItem.min_quantity||""} onChange={e => setEditingItem({...editingItem,min_quantity:e.target.value})}/><input type="number" step="0.000001" placeholder="سعر الوحدة" className="w-full p-2 bg-white rounded-lg text-sm outline-none" value={editingItem.price_per_unit||""} onChange={e => setEditingItem({...editingItem,price_per_unit:e.target.value})}/>{editingItem.store_type==='external_api' && <input type="text" placeholder="معرف المنتج الخارجي" className="w-full p-2 bg-white rounded-lg text-sm outline-none border border-blue-100" value={editingItem.external_id||""} onChange={e => setEditingItem({...editingItem,external_id:e.target.value})}/>}</div>
+                  <div className="space-y-2 p-3 bg-gray-50 rounded-xl"><input type="number" placeholder="أقل كمية" className="w-full p-2 bg-white rounded-lg text-sm outline-none" value={editingItem.min_quantity||""} onChange={e => setEditingItem({...editingItem,min_quantity:e.target.value})}/><input type="number" placeholder="أكثر كمية" className="w-full p-2 bg-white rounded-lg text-sm outline-none" value={editingItem.max_quantity||""} onChange={e => setEditingItem({...editingItem,max_quantity:e.target.value})}/><input type="number" step="0.000001" placeholder="سعر الوحدة" className="w-full p-2 bg-white rounded-lg text-sm outline-none" value={editingItem.price_per_unit||""} onChange={e => setEditingItem({...editingItem,price_per_unit:e.target.value})}/>{editingItem.store_type==='external_api' && <input type="text" placeholder="معرف المنتج الخارجي" className="w-full p-2 bg-white rounded-lg text-sm outline-none border border-blue-100" value={editingItem.external_id||""} onChange={e => setEditingItem({...editingItem,external_id:e.target.value})}/>}</div>
                 ) : <input type="number" step="0.01" placeholder="السعر $" className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none" value={editingItem.price||""} onChange={e => setEditingItem({...editingItem,price:e.target.value})}/>}
                 <div className="flex items-center gap-2"><input type="checkbox" checked={!!editingItem.requires_input} onChange={e => setEditingItem({...editingItem,requires_input:e.target.checked})} className="w-4 h-4 rounded"/><label className="text-xs font-bold text-gray-600">يتطلب بيانات إضافية</label></div>
               </div>
@@ -6068,6 +6071,7 @@ const AdminPanel = ({
       requires_input: false, 
       store_type: "normal",
       min_quantity: "",
+      max_quantity: "",
       price_per_unit: "",
       external_id: ""
     });
@@ -6428,6 +6432,7 @@ const AdminPanel = ({
           requires_input: false, 
           store_type: "normal",
           min_quantity: "",
+          max_quantity: "",
           price_per_unit: "",
           external_id: ""
         });
@@ -6817,6 +6822,7 @@ const AdminPanel = ({
                   {(newProduct.store_type === "quantities" || newProduct.store_type === "external_api") ? (
                     <div className="space-y-2 p-3 bg-gray-50 rounded-xl">
                       <input type="number" placeholder="أقل كمية" className="w-full p-2 bg-white rounded-lg text-sm outline-none" value={newProduct.min_quantity} onChange={e => setNewProduct({...newProduct, min_quantity: e.target.value})}/>
+                      <input type="number" placeholder="أكثر كمية" className="w-full p-2 bg-white rounded-lg text-sm outline-none" value={newProduct.max_quantity||""} onChange={e => setNewProduct({...newProduct, max_quantity: e.target.value})}/>
                       <input type="number" step="0.000001" placeholder="سعر الوحدة $" className="w-full p-2 bg-white rounded-lg text-sm outline-none" value={newProduct.price_per_unit} onChange={e => setNewProduct({...newProduct, price_per_unit: e.target.value})}/>
                       {newProduct.store_type === "external_api" && (
                         <input type="text" placeholder="معرف المنتج الخارجي (external_id)" className="w-full p-2 bg-white rounded-lg text-sm outline-none border border-blue-100" value={newProduct.external_id} onChange={e => setNewProduct({...newProduct, external_id: e.target.value})}/>
