@@ -2489,7 +2489,7 @@ export default function App() {
               >
                 <div className="flex items-center gap-3">
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    order.status === 'completed' ? 'bg-brand-light text-brand' :
+                    order.status === 'completed' ? 'bg-green-50 text-green-600' :
                     order.status === 'failed' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'
                   }`}>
                     {order.status === 'completed' ? <CheckCircle size={20} /> :
@@ -2504,7 +2504,7 @@ export default function App() {
                   <div className="text-left">
                     <p className="font-bold text-brand">{order.total_amount} $</p>
                     <p className={`text-[10px] font-medium ${
-                      order.status === 'completed' ? 'text-brand' :
+                      order.status === 'completed' ? 'text-green-600' :
                       order.status === 'failed' ? 'text-red-500' : 'text-blue-500'
                     }`}>
                       {order.status === 'new' ? 'جديد' : order.status === 'completed' ? 'مكتمل' : order.status === 'failed' || order.status === 'cancelled' ? 'ملغي' : order.status === 'pending_admin' ? 'ينتظر الموافقة' : 'قيد المعالجة'}
@@ -5306,7 +5306,7 @@ const AdminUserCard = ({ u, fetchAdminUsers, handleToggleVip, handleBlockUser, h
 };
 
 // ===================== ADMIN STATS TAB =====================
-const AdminStatsTab = () => {
+const AdminStatsTab = ({ adminFetch }: { adminFetch: any }) => {
   const [filter, setFilter] = React.useState<"daily"|"weekly"|"monthly"|"custom">("monthly");
   const [customFrom, setCustomFrom] = React.useState("");
   const [customTo, setCustomTo] = React.useState("");
@@ -5605,6 +5605,7 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
   const [orderMode, setOrderMode] = React.useState<string>("manual");
   const [modeLoading, setModeLoading] = React.useState(false);
   const [modeLoaded, setModeLoaded] = React.useState(false);
+  const [expandedOrderId, setExpandedOrderId] = React.useState<number|null>(null);
   React.useEffect(() => {
   fetch("/api/settings").then(r => r.json()).then((data: any[]) => {
   const s = data.find((x: any) => x.key === "order_processing_mode");
@@ -5619,7 +5620,16 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
   setModeLoading(false);
   };
   const handleOrderAction = async (orderId: number, action: "approved" | "rejected", adminResp?: string) => {
-  await adminFetch(`/api/admin/orders/${orderId}/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: action, admin_response: adminResp || "" }) });
+  const res = await adminFetch(`/api/admin/orders/${orderId}/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: action, admin_response: adminResp || "" }) });
+  const data = await res.json();
+  if (!res.ok) {
+    alert(`❌ ${data.error || "حدث خطأ أثناء المعالجة"}`);
+    return;
+  }
+  if (action === "approved") {
+    const label = data.finalStatus === "completed" ? "✅ تم التنفيذ بنجاح" : "⏳ قيد المعالجة";
+    alert(label);
+  }
   fetchAdminOrders();
   };
   const pendingAdminOrders = adminOrders.filter(o => o.status === 'pending_admin');
@@ -5671,42 +5681,59 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
       <input type="text" placeholder="بحث في الطلبات..." value={orderSearch} onChange={e => setOrderSearch(e.target.value)} className="w-full bg-white border border-gray-100 rounded-xl pr-9 pl-3 py-2.5 text-xs outline-none shadow-sm"/>
     </div>
     <div className="space-y-3">
-      {filteredOrders.map(order => (
-        <div key={order.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-          <div className="flex justify-between items-start">
+      {filteredOrders.map(order => {
+        let metaParsed: any = {};
+        try { metaParsed = JSON.parse(order.meta || "{}"); } catch {}
+        const isExpanded = expandedOrderId === order.id;
+        return (
+        <div key={order.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="p-4 flex justify-between items-start cursor-pointer" onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}>
             <div>
               <p className="font-bold text-sm text-gray-800">#{order.id} - {order.product_name}</p>
               <p className="text-xs text-gray-500">{order.user_name} · {new Date(order.created_at).toLocaleDateString("ar-EG")}</p>
-              <p className="text-xs font-bold text-[var(--brand)]">{(order.total_price || 0).toFixed(2)} $</p>
+              <p className="text-xs font-bold text-[var(--brand)]">{(order.total_amount || 0).toFixed(2)} $</p>
             </div>
-            <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${order.status==='completed'?'bg-green-100 text-green-700':order.status==='rejected'?'bg-red-100 text-red-600':order.status==='processing'?'bg-blue-100 text-blue-700':'bg-amber-100 text-amber-700'}`}>
-              {order.status==='completed'?'مكتمل':order.status==='rejected'?'مرفوض':order.status==='processing'?'معالجة':'انتظار'}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${order.status==='completed'?'bg-green-100 text-green-700':order.status==='failed'||order.status==='cancelled'||order.status==='rejected'?'bg-red-100 text-red-600':order.status==='processing'?'bg-blue-100 text-blue-700':'bg-amber-100 text-amber-700'}`}>
+                {order.status==='completed'?'مكتمل':order.status==='failed'||order.status==='cancelled'?'مرفوض':order.status==='rejected'?'مرفوض':order.status==='processing'?'معالجة':'انتظار'}
+              </span>
+              <ChevronDown size={16} className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}/>
+            </div>
           </div>
-          {(() => {
-            try {
-              const m = JSON.parse(order.meta || "{}");
-              if (!m.ahminix_order_id) return null;
-              return (
-                <div className="flex gap-2 mt-2">
-                  <span className="text-[10px] text-gray-400">API: {m.ahminix_order_id}</span>
-                  {(order.status === 'processing' || order.status === 'pending') && (
-                    <button
-                      onClick={async () => {
-                        const res = await adminFetch(`/api/admin/ahminix/sync-order/${order.id}`, { method: "POST" });
-                        const d = await res.json();
-                        alert(d.error ? `خطأ: ${d.error}` : `${d.oldStatus} ← ${d.newStatus} (API: ${d.ahminixStatus})`);
-                        fetchAdminOrders();
-                      }}
-                      className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-lg font-bold border border-blue-100"
-                    >🔄 مزامنة</button>
-                  )}
-                </div>
-              );
-            } catch { return null; }
-          })()}
+          {isExpanded && (
+            <div className="border-t border-gray-50 bg-gray-50/50 px-4 pb-4 pt-3 space-y-3">
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div><p className="text-gray-400 mb-0.5">رقم الطلب</p><p className="font-bold text-gray-700">#{order.id}</p></div>
+                <div><p className="text-gray-400 mb-0.5">الوقت</p><p className="font-bold text-gray-700">{new Date(order.created_at).toLocaleString("ar-EG")}</p></div>
+                <div><p className="text-gray-400 mb-0.5">المستخدم</p><p className="font-bold text-gray-700">{order.user_name || "—"}</p></div>
+                <div><p className="text-gray-400 mb-0.5">البريد</p><p className="font-bold text-gray-700 truncate">{order.users?.email || "—"}</p></div>
+                <div><p className="text-gray-400 mb-0.5">المبلغ</p><p className="font-bold text-[var(--brand)]">{(order.total_amount || 0).toFixed(2)} $</p></div>
+                {order.category_name && <div><p className="text-gray-400 mb-0.5">القسم الرئيسي</p><p className="font-bold text-gray-700">{order.category_name}</p></div>}
+                {order.subcategory_name && <div><p className="text-gray-400 mb-0.5">القسم الفرعي</p><p className="font-bold text-gray-700">{order.subcategory_name}</p></div>}
+                <div><p className="text-gray-400 mb-0.5">المنتج</p><p className="font-bold text-gray-700">{order.product_name || "—"}</p></div>
+                {order.order_items?.[0]?.products?.store_type && <div><p className="text-gray-400 mb-0.5">نوع المتجر</p><p className="font-bold text-gray-700">{order.order_items[0].products.store_type}</p></div>}
+                {(metaParsed.playerId || metaParsed.player_id) && <div><p className="text-gray-400 mb-0.5">Player ID</p><p className="font-bold text-gray-700">{metaParsed.playerId || metaParsed.player_id}</p></div>}
+                {metaParsed.ahminix_order_id && <div><p className="text-gray-400 mb-0.5">معرف Ahminix</p><p className="font-bold text-gray-700">{metaParsed.ahminix_order_id}</p></div>}
+                {order.admin_response && <div className="col-span-2"><p className="text-gray-400 mb-0.5">رد الأدمن</p><p className="font-bold text-gray-700">{order.admin_response}</p></div>}
+                <div><p className="text-gray-400 mb-0.5">استرداد الرصيد</p><p className={`font-bold ${metaParsed.refunded ? 'text-green-600' : 'text-gray-400'}`}>{metaParsed.refunded ? `✅ تم (${metaParsed.refunded_at ? new Date(metaParsed.refunded_at).toLocaleDateString("ar-EG") : ""})` : "لا"}</p></div>
+              </div>
+              {metaParsed.ahminix_order_id && (order.status === 'processing' || order.status === 'pending') && (
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    const res = await adminFetch(`/api/admin/ahminix/sync-order/${order.id}`, { method: "POST" });
+                    const d = await res.json();
+                    alert(d.error ? `خطأ: ${d.error}` : `${d.oldStatus} ← ${d.newStatus} (API: ${d.ahminixStatus})`);
+                    fetchAdminOrders();
+                  }}
+                  className="w-full text-xs bg-blue-50 text-blue-600 py-2 rounded-xl font-bold border border-blue-100 active:scale-95"
+                >🔄 مزامنة مع Ahminix</button>
+              )}
+            </div>
+          )}
         </div>
-      ))}
+        );
+      })}
       {filteredOrders.length === 0 && <div className="text-center py-12 text-gray-400"><ShoppingBag size={40} className="mx-auto mb-3 opacity-20"/><p>لا توجد طلبات</p></div>}
     </div>
   </div>
@@ -5774,7 +5801,7 @@ const AdminTransactionsTab = ({adminTransactions, transSearch, setTransSearch, h
   );
 };
 
-const AdminElementsTab = ({categories, subcategories, subSubCategories, fetchCategories, fetchSubcategories, fetchSubSubCategories, paymentMethods, fetchPaymentMethods, banners, fetchBanners, offers, fetchOffers, handleDelete}: any) => {
+const AdminElementsTab = ({categories, subcategories, subSubCategories, fetchCategories, fetchSubcategories, fetchSubSubCategories, paymentMethods, fetchPaymentMethods, banners, fetchBanners, offers, fetchOffers, handleDelete, adminFetch}: any) => {
   const [editingItem, setEditingItem] = React.useState<any>(null);
   const [editingType, setEditingType] = React.useState<string>("");
   const [elementsSubTab, setElementsSubTab] = React.useState<string>("");
@@ -5783,6 +5810,8 @@ const AdminElementsTab = ({categories, subcategories, subSubCategories, fetchCat
   const [loadingElements, setLoadingElements] = React.useState(false);
   const [allSubcats, setAllSubcats] = React.useState<any[]>([]);
   const [allSubSubs, setAllSubSubs] = React.useState<any[]>([]);
+  // المسارات التي تحتاج توكن أدمن
+  const adminRoutes = new Set(["/api/admin/products-all", "/api/admin/vouchers"]);
   React.useEffect(() => {
   fetch("/api/subcategories").then(r=>r.json()).then(setAllSubcats).catch(()=>{});
   fetch("/api/sub-sub-categories").then(r=>r.json()).then(setAllSubSubs).catch(()=>{});
@@ -5790,7 +5819,13 @@ const AdminElementsTab = ({categories, subcategories, subSubCategories, fetchCat
   const loadElements = async (type: string) => {
   setLoadingElements(true); setAllElements([]);
   const map: Record<string,string> = { categories:"/api/categories", subcategories:"/api/subcategories", subSubCategories:"/api/sub-sub-categories", products:"/api/admin/products-all", paymentMethods:"/api/payment-methods", banners:"/api/banners", offers:"/api/offers", vouchers:"/api/admin/vouchers" };
-  try { const res = await fetch(map[type]); const data = await res.json(); setAllElements(Array.isArray(data)?data:[]); } catch { setAllElements([]); }
+  const url = map[type];
+  try {
+    // استخدم adminFetch للمسارات المحمية، وfetch العادي للمسارات العامة
+    const res = adminRoutes.has(url) ? await adminFetch(url) : await fetch(url);
+    const data = await res.json();
+    setAllElements(Array.isArray(data)?data:[]);
+  } catch { setAllElements([]); }
   setLoadingElements(false);
   };
   const handleSaveEdit = async () => {
@@ -6505,7 +6540,7 @@ const AdminPanel = ({
           {adminTab === "admin_home" && <AdminHomeTab adminUsers={adminUsers} adminOrders={adminOrders} adminTransactions={adminTransactions} setAdminTab={setAdminTab} fetchUser={fetchUser} fetchAdminUsers={fetchAdminUsers} handleToggleVip={handleToggleVip} handleBlockUser={handleBlockUser} handleDeleteUser={handleDeleteUser} handleSendNotification={handleSendNotification} onOpenChatWithUser={(u: any) => { setSelectedChatUser(u); setAdminTab("chat"); }} />}
 
           {/* ===== STATS ===== */}
-          {adminTab === "admin_stats" && <AdminStatsTab />}
+          {adminTab === "admin_stats" && <AdminStatsTab adminFetch={adminFetch} />}
 
           {adminTab === "chat" && <AdminChatView />}
 
@@ -6516,7 +6551,7 @@ const AdminPanel = ({
           {adminTab === "transactions" && <AdminTransactionsTab adminTransactions={adminTransactions} transSearch={transSearch} setTransSearch={setTransSearch} handleApproveTransaction={handleApproveTransaction} handleRejectTransaction={handleRejectTransaction} />}
 
           {/* ===== ELEMENTS ===== */}
-          {adminTab === "elements" && <AdminElementsTab categories={categories} subcategories={subcategories} subSubCategories={subSubCategories} fetchCategories={fetchCategories} fetchSubcategories={fetchSubcategories} fetchSubSubCategories={fetchSubSubCategories} paymentMethods={paymentMethods} fetchPaymentMethods={fetchPaymentMethods} banners={banners} fetchBanners={fetchBanners} offers={offers} fetchOffers={fetchOffers} handleDelete={handleDelete} />}
+          {adminTab === "elements" && <AdminElementsTab categories={categories} subcategories={subcategories} subSubCategories={subSubCategories} fetchCategories={fetchCategories} fetchSubcategories={fetchSubcategories} fetchSubSubCategories={fetchSubSubCategories} paymentMethods={paymentMethods} fetchPaymentMethods={fetchPaymentMethods} banners={banners} fetchBanners={fetchBanners} offers={offers} fetchOffers={fetchOffers} handleDelete={handleDelete} adminFetch={adminFetch} />}
 
           {/* ===== AHMINIX ===== */}
           {adminTab === "ahminix" && (
