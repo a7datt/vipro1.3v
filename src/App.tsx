@@ -2630,13 +2630,18 @@ export default function App() {
         const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, { method: "POST", body: formData });
         const data = await res.json();
         if (data.success) {
+          const token = localStorage.getItem("token") || "";
           const updateRes = await fetch(`/api/user/${user?.id}/avatar`, {
             method: "PATCH",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`
+            },
             body: JSON.stringify({ avatar_url: data.data.url })
           });
-          if (updateRes.ok) { fetchUser(user!.id); alert("تم تحديث الصورة الشخصية بنجاح"); }
-        }
+          if (updateRes.ok) { fetchUser(user!.id); alert("✅ تم تحديث الصورة الشخصية بنجاح"); }
+          else { const err = await updateRes.json(); alert("فشل التحديث: " + (err.error || "")); }
+        } else { alert("فشل رفع الصورة على الخادم"); }
       } catch { alert("فشل رفع الصورة"); } finally { setUploading(false); }
     };
 
@@ -5685,49 +5690,59 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
         let metaParsed: any = {};
         try { metaParsed = JSON.parse(order.meta || "{}"); } catch {}
         const isExpanded = expandedOrderId === order.id;
+        const statusColor = order.status==='completed' ? 'bg-green-100 text-green-700' : order.status==='failed'||order.status==='cancelled'||order.status==='rejected' ? 'bg-red-100 text-red-600' : order.status==='processing' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700';
+        const statusLabel = order.status==='completed' ? 'مكتمل' : order.status==='failed'||order.status==='cancelled'||order.status==='rejected' ? 'مرفوض' : order.status==='processing' ? 'معالجة' : 'انتظار';
         return (
         <div key={order.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="p-4 flex justify-between items-start cursor-pointer" onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}>
-            <div>
-              <p className="font-bold text-sm text-gray-800">#{order.id} - {order.product_name}</p>
-              <p className="text-xs text-gray-500">{order.user_name} · {new Date(order.created_at).toLocaleDateString("ar-EG")}</p>
-              <p className="text-xs font-bold text-[var(--brand)]">{(order.total_amount || 0).toFixed(2)} $</p>
+
+          {/* ── معلومات المستخدم — دائمة الظهور ── */}
+          <div className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-gray-50">
+            <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden flex-shrink-0 flex items-center justify-center">
+              {order.user_avatar
+                ? <img src={order.user_avatar} className="w-full h-full object-cover" referrerPolicy="no-referrer"/>
+                : <User size={18} className="text-gray-400"/>}
             </div>
-            <div className="flex items-center gap-2">
-              <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${order.status==='completed'?'bg-green-100 text-green-700':order.status==='failed'||order.status==='cancelled'||order.status==='rejected'?'bg-red-100 text-red-600':order.status==='processing'?'bg-blue-100 text-blue-700':'bg-amber-100 text-amber-700'}`}>
-                {order.status==='completed'?'مكتمل':order.status==='failed'||order.status==='cancelled'?'مرفوض':order.status==='rejected'?'مرفوض':order.status==='processing'?'معالجة':'انتظار'}
-              </span>
-              <ChevronDown size={16} className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}/>
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-sm text-gray-800 truncate">{order.user_name}</p>
+              <p className="text-[10px] text-gray-400 truncate">{order.user_email || order.users?.email || "—"}</p>
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                <span className="text-[10px] text-gray-400">#{order.user_db_id || order.user_id}</span>
+                {(order.user_phone || order.users?.phone) && <span className="text-[10px] text-gray-400">{order.user_phone || order.users?.phone}</span>}
+              </div>
             </div>
+            <span className={`text-[10px] font-bold px-2 py-1 rounded-full flex-shrink-0 ${statusColor}`}>{statusLabel}</span>
           </div>
+
+          {/* ── ملخص الطلب — دائم الظهور ── */}
+          <div className="px-4 py-3 flex items-center justify-between cursor-pointer" onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}>
+            <div>
+              <p className="font-bold text-sm text-gray-800">#{order.id} — {order.product_name}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{new Date(order.created_at).toLocaleString("ar-EG")}</p>
+              <p className="text-xs font-bold text-[var(--brand)] mt-0.5">{(order.total_amount || 0).toFixed(2)} $</p>
+            </div>
+            <ChevronDown size={16} className={`text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}/>
+          </div>
+
+          {/* ── تفاصيل الطلب — تظهر بعد فتح السهم ── */}
           {isExpanded && (
             <div className="border-t border-gray-50 bg-gray-50/50 px-4 pb-4 pt-3 space-y-3">
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div><p className="text-gray-400 mb-0.5">رقم الطلب</p><p className="font-bold text-gray-700">#{order.id}</p></div>
-                <div><p className="text-gray-400 mb-0.5">الوقت</p><p className="font-bold text-gray-700">{new Date(order.created_at).toLocaleString("ar-EG")}</p></div>
-                <div><p className="text-gray-400 mb-0.5">المستخدم</p><p className="font-bold text-gray-700">{order.user_name || "—"}</p></div>
-                <div><p className="text-gray-400 mb-0.5">البريد</p><p className="font-bold text-gray-700 truncate">{order.users?.email || "—"}</p></div>
-                <div><p className="text-gray-400 mb-0.5">المبلغ</p><p className="font-bold text-[var(--brand)]">{(order.total_amount || 0).toFixed(2)} $</p></div>
-                {order.category_name && <div><p className="text-gray-400 mb-0.5">القسم الرئيسي</p><p className="font-bold text-gray-700">{order.category_name}</p></div>}
-                {order.subcategory_name && <div><p className="text-gray-400 mb-0.5">القسم الفرعي</p><p className="font-bold text-gray-700">{order.subcategory_name}</p></div>}
-                <div><p className="text-gray-400 mb-0.5">المنتج</p><p className="font-bold text-gray-700">{order.product_name || "—"}</p></div>
-                {order.order_items?.[0]?.products?.store_type && <div><p className="text-gray-400 mb-0.5">نوع المتجر</p><p className="font-bold text-gray-700">{order.order_items[0].products.store_type}</p></div>}
-                {(metaParsed.playerId || metaParsed.player_id) && <div><p className="text-gray-400 mb-0.5">Player ID</p><p className="font-bold text-gray-700">{metaParsed.playerId || metaParsed.player_id}</p></div>}
-                {metaParsed.ahminix_order_id && <div><p className="text-gray-400 mb-0.5">معرف Ahminix</p><p className="font-bold text-gray-700">{metaParsed.ahminix_order_id}</p></div>}
-                {order.admin_response && <div className="col-span-2"><p className="text-gray-400 mb-0.5">رد الأدمن</p><p className="font-bold text-gray-700">{order.admin_response}</p></div>}
-                <div><p className="text-gray-400 mb-0.5">استرداد الرصيد</p><p className={`font-bold ${metaParsed.refunded ? 'text-green-600' : 'text-gray-400'}`}>{metaParsed.refunded ? `✅ تم (${metaParsed.refunded_at ? new Date(metaParsed.refunded_at).toLocaleDateString("ar-EG") : ""})` : "لا"}</p></div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {order.category_name && <div className="bg-white rounded-xl p-2.5 border border-gray-100"><p className="text-[9px] text-gray-400 mb-0.5">القسم الرئيسي</p><p className="font-bold text-gray-700">{order.category_name}</p></div>}
+                {order.subcategory_name && <div className="bg-white rounded-xl p-2.5 border border-gray-100"><p className="text-[9px] text-gray-400 mb-0.5">القسم الفرعي</p><p className="font-bold text-gray-700">{order.subcategory_name}</p></div>}
+                {order.order_items?.[0]?.products?.store_type && <div className="bg-white rounded-xl p-2.5 border border-gray-100"><p className="text-[9px] text-gray-400 mb-0.5">نوع المتجر</p><p className="font-bold text-gray-700">{order.order_items[0].products.store_type}</p></div>}
+                {(metaParsed.playerId || metaParsed.player_id) && <div className="bg-white rounded-xl p-2.5 border border-gray-100"><p className="text-[9px] text-gray-400 mb-0.5">Player ID</p><p className="font-bold text-gray-700">{metaParsed.playerId || metaParsed.player_id}</p></div>}
+                {metaParsed.ahminix_order_id && <div className="bg-white rounded-xl p-2.5 border border-gray-100 col-span-2"><p className="text-[9px] text-gray-400 mb-0.5">معرف Ahminix</p><p className="font-bold text-gray-700">{metaParsed.ahminix_order_id}</p></div>}
+                {order.admin_response && <div className="bg-white rounded-xl p-2.5 border border-gray-100 col-span-2"><p className="text-[9px] text-gray-400 mb-0.5">رد الأدمن</p><p className="font-bold text-gray-700">{order.admin_response}</p></div>}
+                <div className="bg-white rounded-xl p-2.5 border border-gray-100"><p className="text-[9px] text-gray-400 mb-0.5">استرداد الرصيد</p><p className={`font-bold text-xs ${metaParsed.refunded ? 'text-green-600' : 'text-gray-400'}`}>{metaParsed.refunded ? `✅ تم` : "لا"}</p></div>
               </div>
               {metaParsed.ahminix_order_id && (order.status === 'processing' || order.status === 'pending') && (
-                <button
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    const res = await adminFetch(`/api/admin/ahminix/sync-order/${order.id}`, { method: "POST" });
-                    const d = await res.json();
-                    alert(d.error ? `خطأ: ${d.error}` : `${d.oldStatus} ← ${d.newStatus} (API: ${d.ahminixStatus})`);
-                    fetchAdminOrders();
-                  }}
-                  className="w-full text-xs bg-blue-50 text-blue-600 py-2 rounded-xl font-bold border border-blue-100 active:scale-95"
-                >🔄 مزامنة مع Ahminix</button>
+                <button onClick={async (e) => {
+                  e.stopPropagation();
+                  const res = await adminFetch(`/api/admin/ahminix/sync-order/${order.id}`, { method: "POST" });
+                  const d = await res.json();
+                  alert(d.error ? `خطأ: ${d.error}` : `${d.oldStatus} ← ${d.newStatus} (API: ${d.ahminixStatus})`);
+                  fetchAdminOrders();
+                }} className="w-full text-xs bg-blue-50 text-blue-600 py-2 rounded-xl font-bold border border-blue-100 active:scale-95">🔄 مزامنة مع Ahminix</button>
               )}
             </div>
           )}
@@ -5742,7 +5757,9 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
 };
 
 const AdminTransactionsTab = ({adminTransactions, transSearch, setTransSearch, handleApproveTransaction, handleRejectTransaction}: any) => {
-  const filteredTrans = adminTransactions.filter(t => !transSearch || t.user_name?.includes(transSearch) || String(t.id).includes(transSearch));
+  const [expandedId, setExpandedId] = React.useState<number|null>(null);
+  const [customAmounts, setCustomAmounts] = React.useState<Record<number,string>>({});
+  const filteredTrans = adminTransactions.filter(t => !transSearch || t.user_name?.includes(transSearch) || String(t.id).includes(transSearch) || t.user_email?.includes(transSearch));
   return (
 
   <div className="space-y-4">
@@ -5751,49 +5768,103 @@ const AdminTransactionsTab = ({adminTransactions, transSearch, setTransSearch, h
       <input type="text" placeholder="بحث في الدفعات..." value={transSearch} onChange={e => setTransSearch(e.target.value)} className="w-full bg-white border border-gray-100 rounded-xl pr-9 pl-3 py-2.5 text-xs outline-none shadow-sm"/>
     </div>
     <div className="space-y-3">
-      {filteredTrans.map(t => (
-        <div key={t.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="font-bold text-sm text-gray-800">{t.user_name}</p>
-              <p className="text-[10px] text-gray-400">#{t.id ? `TX${t.id}` : '—'}</p>
+      {filteredTrans.map(t => {
+        const isExpanded = expandedId === t.id;
+        const customAmt = customAmounts[t.id] ?? "";
+        return (
+        <div key={t.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+
+          {/* ── معلومات المستخدم — دائمة الظهور ── */}
+          <div className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-gray-50">
+            <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden flex-shrink-0 flex items-center justify-center">
+              {t.user_avatar
+                ? <img src={t.user_avatar} className="w-full h-full object-cover" referrerPolicy="no-referrer"/>
+                : <User size={18} className="text-gray-400"/>}
             </div>
-            <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${t.status==='approved'?'bg-green-100 text-green-700':t.status==='rejected'?'bg-red-100 text-red-600':'bg-amber-100 text-amber-700'}`}>
-              {t.status==='approved'?'مقبول':t.status==='rejected'?'مرفوض':'منتظر'}
-            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-sm text-gray-800 truncate">{t.user_name || "—"}</p>
+              <p className="text-[10px] text-gray-400 truncate">{t.user_email || "—"}</p>
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                <span className="text-[10px] text-gray-400">#{t.user_db_id || t.user_id}</span>
+                {t.user_phone && t.user_phone !== "—" && <span className="text-[10px] text-gray-400">{t.user_phone}</span>}
+              </div>
+            </div>
+            <div className="flex-shrink-0 text-left">
+              <p className="text-sm font-black text-green-600">{(t.amount||0).toFixed(2)} $</p>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${t.status==='approved'?'bg-green-100 text-green-700':t.status==='rejected'?'bg-red-100 text-red-600':'bg-amber-100 text-amber-700'}`}>
+                {t.status==='approved'?'مقبول':t.status==='rejected'?'مرفوض':'منتظر'}
+              </span>
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-gray-50 p-2.5 rounded-xl">
-              <p className="text-[9px] text-gray-400 font-bold mb-0.5">رقم العملية</p>
-              <p className="text-xs font-black text-gray-700">#{t.id ? `TX${t.id}` : '—'}</p>
-            </div>
-            <div className="bg-gray-50 p-2.5 rounded-xl">
-              <p className="text-[9px] text-gray-400 font-bold mb-0.5">المبلغ</p>
-              <p className="text-xs font-black text-green-600">{(t.amount || 0).toFixed(2)} $</p>
-            </div>
-            <div className="bg-gray-50 p-2.5 rounded-xl">
-              <p className="text-[9px] text-gray-400 font-bold mb-0.5">تاريخ الطلب</p>
-              <p className="text-[10px] font-bold text-gray-700">{new Date(t.created_at).toLocaleDateString("ar-EG", {year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'})}</p>
-            </div>
-            <div className="bg-gray-50 p-2.5 rounded-xl">
-              <p className="text-[9px] text-gray-400 font-bold mb-0.5">طريقة الشحن</p>
-              <p className="text-[10px] font-bold text-gray-700 truncate">{t.payment_method_name || '—'}</p>
-            </div>
-          </div>
-          {t.receipt_image_url && (
+
+          {/* ── ملخص الدفعة — دائم الظهور + زر السهم ── */}
+          <div className="px-4 py-3 flex items-center justify-between cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : t.id)}>
             <div>
-              <p className="text-[9px] text-gray-400 font-bold mb-1">صورة الإيصال</p>
-              <img src={t.receipt_image_url} className="w-full h-40 object-cover rounded-xl cursor-pointer" referrerPolicy="no-referrer" onClick={() => window.open(t.receipt_image_url, '_blank')}/>
+              <p className="font-bold text-xs text-gray-700">TX{t.id} · {t.payment_method_name || "—"}</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">{new Date(t.created_at).toLocaleString("ar-EG")}</p>
+              {t.tx_number && <p className="text-[10px] text-gray-400 mt-0.5">رقم العملية: {t.tx_number}</p>}
             </div>
-          )}
-          {t.status === 'pending' && (
-            <div className="flex gap-2">
-              <button onClick={() => handleApproveTransaction(t.id)} className="flex-1 bg-green-500 text-white py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1"><CheckCircle size={13}/>قبول</button>
-              <button onClick={() => handleRejectTransaction(t.id)} className="flex-1 bg-red-100 text-red-600 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1"><XCircle size={13}/>رفض</button>
+            <ChevronDown size={16} className={`text-gray-400 transition-transform flex-shrink-0 ${isExpanded?'rotate-180':''}`}/>
+          </div>
+
+          {/* ── تفاصيل الدفعة — تظهر بعد فتح السهم ── */}
+          {isExpanded && (
+            <div className="border-t border-gray-50 bg-gray-50/50 px-4 pb-4 pt-3 space-y-3">
+              {/* صورة الإيصال */}
+              {t.receipt_image_url && (
+                <div>
+                  <p className="text-[9px] text-gray-400 font-bold mb-1">صورة الإيصال</p>
+                  <img src={t.receipt_image_url} className="w-full h-44 object-cover rounded-xl cursor-pointer border border-gray-100" referrerPolicy="no-referrer" onClick={() => window.open(t.receipt_image_url, '_blank')}/>
+                </div>
+              )}
+              {/* ملاحظة */}
+              {t.note && (
+                <div className="bg-white rounded-xl p-2.5 border border-gray-100">
+                  <p className="text-[9px] text-gray-400 font-bold mb-0.5">الملاحظة</p>
+                  <p className="text-xs text-gray-700">{t.note}</p>
+                </div>
+              )}
+
+              {/* أزرار القبول/الرفض فقط للمعلقة */}
+              {t.status === 'pending' && (
+                <div className="space-y-2">
+                  <div className="bg-white rounded-xl border border-gray-100 p-3">
+                    <p className="text-[10px] text-gray-400 font-bold mb-1.5">تعديل المبلغ (اختياري)</p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number" min="0.01" step="0.01"
+                        placeholder={`الافتراضي: ${(t.amount||0).toFixed(2)}`}
+                        value={customAmt}
+                        onChange={e => setCustomAmounts(prev => ({...prev, [t.id]: e.target.value}))}
+                        className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none focus:border-[var(--brand)]"
+                      />
+                      <span className="text-xs text-gray-400 font-bold">$</span>
+                    </div>
+                    {customAmt && parseFloat(customAmt) > 0 && (
+                      <p className="text-[10px] text-amber-600 mt-1">⚠️ سيتم إضافة {parseFloat(customAmt).toFixed(2)}$ بدلاً من {(t.amount||0).toFixed(2)}$</p>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        const amt = customAmt && parseFloat(customAmt) > 0 ? parseFloat(customAmt) : undefined;
+                        handleApproveTransaction(t.id, amt);
+                        setCustomAmounts(prev => { const n={...prev}; delete n[t.id]; return n; });
+                      }}
+                      className="flex-1 bg-green-500 text-white py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1 active:scale-95">
+                      <CheckCircle size={13}/>قبول{customAmt && parseFloat(customAmt)>0 ? ` (${parseFloat(customAmt).toFixed(2)}$)` : ""}
+                    </button>
+                    <button onClick={() => handleRejectTransaction(t.id)} className="flex-1 bg-red-100 text-red-600 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1 active:scale-95">
+                      <XCircle size={13}/>رفض
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
       {filteredTrans.length === 0 && <div className="text-center py-12 text-gray-400"><Wallet size={40} className="mx-auto mb-3 opacity-20"/><p>لا توجد دفعات</p></div>}
     </div>
   </div>
@@ -6292,8 +6363,14 @@ const AdminPanel = ({
       } catch (e) { console.error(e); }
     };
 
-    const handleApproveTransaction = async (id: number) => {
-      await adminFetch(`/api/admin/transactions/${id}/approve`, { method: "POST" });
+    const handleApproveTransaction = async (id: number, customAmount?: number) => {
+      const body: any = {};
+      if (customAmount !== undefined && customAmount > 0) body.custom_amount = customAmount;
+      await adminFetch(`/api/admin/transactions/${id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
       fetchAdminTransactions();
     };
 
