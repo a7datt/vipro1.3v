@@ -2816,67 +2816,35 @@ async function startServer() {
           const apiRes = await ahminixCreateOrder(String(product.external_id), qty, playerId, orderUuid);
           console.log(`[API] Ahminix response:`, JSON.stringify(apiRes));
 
-          // معالجة أخطاء API بشكل واضح
-          if (!apiRes || apiRes.status !== "OK") {
-            const errMsg = apiRes?.message || apiRes?.error || "فشل إرسال الطلب للـ API";
-            const errCode = Number(apiRes?.code || apiRes?.error_code || 0);
-            const adminErrorCodes: Record<number, string> = {
-              100: "رصيد API غير كافٍ — يرجى شحن حساب Ahminix",
-              105: "الكمية غير متوفرة حالياً",
-              106: "الكمية غير مسموح بها لهذا المنتج",
-              112: "الكمية أقل من الحد الأدنى المسموح",
-              113: "الكمية تتجاوز الحد الأقصى المسموح",
-              114: `بيانات اللاعب غير صحيحة — Player ID: "${playerId}"`,
-              120: "رمز API مطلوب — تحقق من AHMINIX_API_TOKEN",
-              121: "رمز API خاطئ",
-              122: "غير مسموح باستخدام API",
-              123: "عنوان IP غير مسموح به في Ahminix",
-              130: "موقع Ahminix تحت الصيانة",
+          // نرسل الطلب دائماً بغض النظر عن رد API
+          // إذا نجح → نحفظ بيانات Ahminix ونحدد الحالة
+          // إذا فشل → نسجل الخطأ في meta ونضع الطلب processing ليتابعه الأدمن
+          if (apiRes && apiRes.status === "OK") {
+            const ahminixRawStatus = apiRes.data?.status || "";
+            const mappedStatus = mapAhminixStatus(ahminixRawStatus);
+            updatedMeta = {
+              ...updatedMeta,
+              ahminix_order_id: apiRes.data?.order_id,
+              ahminix_status: ahminixRawStatus,
+              ahminix_replay: normalizeReplayApi(apiRes.data?.replay_api),
+              admin_approved_at: new Date().toISOString()
             };
-            const isLowBalance = typeof errMsg === "string" && (
-              errMsg.toLowerCase().includes("balance") ||
-              errMsg.toLowerCase().includes("insufficient") ||
-              errMsg.toLowerCase().includes("رصيد") ||
-              errMsg.toLowerCase().includes("credit")
-            );
-            const friendlyMsg = adminErrorCodes[errCode]
-              || (isLowBalance ? "رصيد API غير كافٍ — يرجى شحن حساب Ahminix"
-              : errMsg);
-
-            // نُحدّث meta فقط بالخطأ ونُبقي الطلب pending_admin ليتمكن الأدمن من المحاولة مجدداً
-            await supabase.from("orders").update({
-              meta: JSON.stringify({
-                ...updatedMeta,
-                last_api_error: friendlyMsg,
-                last_api_error_at: new Date().toISOString(),
-                last_api_raw: JSON.stringify(apiRes)
-              })
-            }).eq("id", req.params.id);
-
-            return res.status(400).json({
-              error: `❌ ${friendlyMsg}`,
-              details: {
-                code: errCode,
-                raw: errMsg,
-                playerId,
-                external_id: product.external_id,
-                qty
-              }
-            });
+            finalStatus = mappedStatus === "completed" ? "completed" : "processing";
+          } else {
+            // فشل API لكن نكمل القبول — الطلب يصبح processing للمتابعة اليدوية
+            const errMsg = apiRes?.message || apiRes?.error || "لم يستجب API";
+            const errCode = Number(apiRes?.code || apiRes?.error_code || 0);
+            console.warn(`[API] Order #${order.id} API failed (code=${errCode}): ${errMsg} — marking as processing`);
+            updatedMeta = {
+              ...updatedMeta,
+              admin_approved_at: new Date().toISOString(),
+              api_send_attempted: true,
+              api_error_code: errCode,
+              api_error_msg: errMsg,
+              api_error_at: new Date().toISOString()
+            };
+            finalStatus = "processing";
           }
-
-          const ahminixRawStatus = apiRes.data?.status || "";
-          const mappedStatus = mapAhminixStatus(ahminixRawStatus);
-
-          updatedMeta = {
-            ...updatedMeta,
-            ahminix_order_id: apiRes.data?.order_id,
-            ahminix_status: ahminixRawStatus,
-            ahminix_replay: apiRes.data?.replay_api || [],
-            admin_approved_at: new Date().toISOString()
-          };
-          // Fix 3: استخدام mapAhminixStatus بدل المقارنة اليدوية
-          finalStatus = mappedStatus === "completed" ? "completed" : "processing";
         } else {
           // منتج عادي تمت الموافقة عليه
           finalStatus = 'completed';
@@ -2914,7 +2882,7 @@ async function startServer() {
         sendTelegramToUser(order.user_id, `🔔 وصلك رد جديد على طلبك #${req.params.id}:\n\n${responseText}`);
       }
 
-      res.json({ success: true, finalStatus });
+      res.json({ success: true, finalStatus, apiError: updatedMeta.api_error_msg || null });
     } catch (e: any) {
       safeError(res, e);
     }
