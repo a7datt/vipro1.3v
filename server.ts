@@ -164,12 +164,14 @@ async function processBotOrder(chatId: number, user: any, product: any, price: n
 
     if (orderErr) throw orderErr;
 
+    // حفظ سعر التكلفة لحظة الشراء لضمان صحة حساب الأرباح لاحقاً
+    const botCostPrice = parseFloat(String(product.price_per_unit || 0)) || 0;
     await supabase.from("order_items").insert({
       order_id: order.id,
       product_id: product.id,
       price_at_purchase: product.price,
       quantity: 1,
-      extra_data: JSON.stringify(extraData)
+      extra_data: JSON.stringify({ ...extraData, cost_price: botCostPrice })
     });
 
     await supabase.from("users").update({ balance: user.balance - price }).eq("id", user.id);
@@ -651,6 +653,62 @@ async function startServer() {
       if (subId) query = query.eq("subcategory_id", subId);
       else if (!all) query = query.eq("available", true);
       const { data, error } = await query.order("id", { ascending: false });
+      if (error) throw error;
+      res.json(Array.isArray(data) ? data : []);
+    } catch (e: any) {
+      safeError(res, e);
+    }
+  });
+
+  // ===== أكثر المنتجات شراءً =====
+  app.get("/api/most-purchased", authenticate, async (req, res) => {
+    try {
+      // نجلب المنتجات مرتبة حسب عدد مرات الشراء من order_items
+      const { data, error } = await supabase.rpc
+        ? await (async () => {
+            // استعلام مجمّع: عدد مرات الشراء لكل منتج من الطلبات المكتملة
+            const { data: items, error: itemsErr } = await supabase
+              .from("order_items")
+              .select("product_id, quantity, orders!inner(status)")
+              .eq("orders.status", "completed");
+            if (itemsErr) throw itemsErr;
+
+            // تجميع العدد لكل منتج
+            const countMap = new Map<number, number>();
+            for (const item of (items || [])) {
+              const pid = item.product_id;
+              countMap.set(pid, (countMap.get(pid) || 0) + (Number(item.quantity) || 1));
+            }
+
+            // ترتيب وأخذ أكثر 9
+            const sorted = [...countMap.entries()]
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 9);
+
+            if (sorted.length === 0) return { data: [], error: null };
+
+            const ids = sorted.map(([id]) => id);
+            const { data: prods, error: prodsErr } = await supabase
+              .from("products")
+              .select("id, name, price, image_url, store_type")
+              .in("id", ids)
+              .eq("available", true);
+            if (prodsErr) throw prodsErr;
+
+            // إضافة عدد مرات الشراء لكل منتج وترتيبها
+            const prodMap = new Map((prods || []).map((p: any) => [p.id, p]));
+            const result = sorted
+              .map(([id, count]) => {
+                const prod = prodMap.get(id);
+                if (!prod) return null;
+                return { ...prod, purchase_count: count };
+              })
+              .filter(Boolean);
+
+            return { data: result, error: null };
+          })()
+        : { data: [], error: null };
+
       if (error) throw error;
       res.json(Array.isArray(data) ? data : []);
     } catch (e: any) {
@@ -1339,10 +1397,13 @@ async function startServer() {
       }
 
       // حفظ الطلب في قاعدة البيانات المحلية
+      // cost_price: سعر التكلفة لحظة الشراء — يُحفظ هنا ليُستخدم في حساب الأرباح حتى لو تغيّر لاحقاً
+      const snapshotCostPrice = parseFloat(String(product.price_per_unit || 0)) || 0;
       const metaData: any = {
         ...extraData,
         order_mode: orderMode,
         product_name: product.name,
+        cost_price: snapshotCostPrice,
         ...(ahminixOrderId ? {
           ahminix_order_id: ahminixOrderId,
           ahminix_order_uuid: ahminixOrderUuid || ahminixOrderId,
@@ -2629,9 +2690,12 @@ async function startServer() {
           // price_at_purchase = سعر البيع الذي دفعه المستخدم
           const sellPrice = parseFloat(String(item.price_at_purchase ?? "0")) || 0;
 
-          // price_per_unit = سعر التكلفة (سعر API الأصلي)
-          // إذا كان 0 أو null → المنتج غير مرتبط بـ API → تكلفة = 0
-          const rawCost = item.products?.price_per_unit;
+          // سعر التكلفة: نقرأ أولاً من cost_price المحفوظ لحظة الشراء في extra_data
+          // (يضمن دقة الأرباح حتى لو تغيّر price_per_unit لاحقاً أو كان 0 في قاعدة البيانات)
+          let itemExtraData: any = {};
+          try { itemExtraData = JSON.parse(item.extra_data || "{}"); } catch {}
+          const costFromSnapshot = parseFloat(String(itemExtraData?.cost_price ?? "")) || 0;
+          const rawCost = costFromSnapshot > 0 ? costFromSnapshot : item.products?.price_per_unit;
           const costPrice = (rawCost !== null && rawCost !== undefined && rawCost !== "" && parseFloat(String(rawCost)) > 0)
             ? parseFloat(String(rawCost))
             : 0;
@@ -3874,10 +3938,10 @@ async function startServer() {
       const apiProducts = await ahminixGetProducts();
       if (!apiProducts.length) { console.log("[AUTO-SYNC] لا منتجات من API"); return; }
 
-      // جلب كل منتجات external_api من قاعدة البيانات
+      // جلب كل منتجات external_api من قاعدة البيانات (نجلب price_per_unit لمقارنتها مع API)
       const { data: dbProducts } = await supabase
         .from("products")
-        .select("id, external_id, available, name")
+        .select("id, external_id, available, name, price_per_unit")
         .eq("store_type", "external_api")
         .not("external_id", "is", null);
 
@@ -3901,22 +3965,27 @@ async function startServer() {
 
         const apiAvailable = apiProd.available !== false;
 
+        // سعر التكلفة من API (للمقارنة وتحديثه في قاعدة البيانات)
+        const apiCostPrice = parseFloat(String(apiProd.price || 0)) || 0;
+        const dbCostPrice = parseFloat(String(dbProd.price_per_unit || 0)) || 0;
+        const priceChanged = apiCostPrice > 0 && Math.abs(apiCostPrice - dbCostPrice) > 0.000001;
+
         if (!apiAvailable && dbProd.available) {
           // أصبح غير متوفر → ضعه رمادياً (available = false) بدل الحذف
           await supabase.from("products")
-            .update({ available: false, name: apiProd.name })
+            .update({ available: false, name: apiProd.name, ...(apiCostPrice > 0 ? { price_per_unit: apiCostPrice } : {}) })
             .eq("id", dbProd.id);
           markedUnavailable++;
         } else if (apiAvailable && !dbProd.available) {
           // عاد متوفراً → أعد تفعيله
           await supabase.from("products")
-            .update({ available: true, name: apiProd.name })
+            .update({ available: true, name: apiProd.name, ...(apiCostPrice > 0 ? { price_per_unit: apiCostPrice } : {}) })
             .eq("id", dbProd.id);
           restored++;
-        } else if (apiAvailable && dbProd.name !== apiProd.name) {
-          // تحديث الاسم فقط إذا تغيّر
+        } else if (apiAvailable && (dbProd.name !== apiProd.name || priceChanged)) {
+          // تحديث الاسم و/أو سعر التكلفة إذا تغيّرا
           await supabase.from("products")
-            .update({ name: apiProd.name })
+            .update({ name: apiProd.name, ...(apiCostPrice > 0 ? { price_per_unit: apiCostPrice } : {}) })
             .eq("id", dbProd.id);
           updated++;
         }
