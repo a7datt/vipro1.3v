@@ -359,6 +359,58 @@ export default function App() {
     timeLeft: 0
   });
 
+  // ===== HOME SORT MODE & FAVORITES =====
+  const [homeSortMode, setHomeSortMode] = useState<"categories" | "most_purchased" | "favorites">("categories");
+  const [mostPurchased, setMostPurchased] = useState<any[]>([]);
+  const [mostPurchasedLoading, setMostPurchasedLoading] = useState(false);
+  const [favorites, setFavorites] = useState<any[]>(() => {
+    try { return JSON.parse(localStorage.getItem("vipro_favorites") || "[]"); } catch { return []; }
+  });
+  const [longPressTarget, setLongPressTarget] = useState<any | null>(null);
+  const [longPressPos, setLongPressPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // حفظ المفضلة في localStorage عند التغيير
+  useEffect(() => {
+    localStorage.setItem("vipro_favorites", JSON.stringify(favorites));
+  }, [favorites]);
+
+  const addToFavorites = (item: any) => {
+    setFavorites(prev => {
+      const exists = prev.some(f => f._fav_key === item._fav_key);
+      if (exists) return prev;
+      return [...prev, item];
+    });
+    setLongPressTarget(null);
+  };
+
+  const removeFromFavorites = (favKey: string) => {
+    setFavorites(prev => prev.filter(f => f._fav_key !== favKey));
+  };
+
+  const isFavorite = (favKey: string) => favorites.some(f => f._fav_key === favKey);
+
+  const fetchMostPurchased = async () => {
+    if (mostPurchasedLoading) return;
+    setMostPurchasedLoading(true);
+    try {
+      const token = localStorage.getItem("authToken") || "";
+      const res = await fetch("/api/most-purchased", { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setMostPurchased(data || []);
+      }
+    } catch {}
+    setMostPurchasedLoading(false);
+  };
+
+  // useLongPress helper داخلي
+  const useLongPressHandlers = (item: any, e: React.TouchEvent | React.MouseEvent) => {
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    setLongPressTarget(item);
+    setLongPressPos({ x: rect.left + rect.width / 2, y: rect.top });
+  };
+  // ===== END HOME SORT MODE & FAVORITES =====
+
   // Theme effect
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: any) => {
@@ -1346,39 +1398,183 @@ export default function App() {
           </div>
         </div>
 
-      {/* Categories */}
+      {/* Categories / Most Purchased / Favorites */}
       <div className="px-4">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-gray-800">الأقسام الرئيسية</h3>
-          <button className={`${theme.text} text-sm font-medium`}>عرض الكل</button>
+          <h3 className="font-bold text-gray-800">
+            {homeSortMode === "categories" ? "الأقسام الرئيسية" : homeSortMode === "most_purchased" ? "أكثر المنتجات شراءً" : "مفضلاتي"}
+          </h3>
+          <select
+            value={homeSortMode}
+            onChange={e => {
+              const v = e.target.value as any;
+              setHomeSortMode(v);
+              if (v === "most_purchased") fetchMostPurchased();
+            }}
+            className={`text-sm font-medium border-0 outline-none bg-transparent ${theme.text} cursor-pointer`}
+          >
+            <option value="categories">-- اختر الترتيب --</option>
+            <option value="most_purchased">أكثر المنتجات شراءً</option>
+            <option value="favorites">مفضلاتي</option>
+          </select>
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          {categories.length === 0 ? (
-            [1,2,3,4,5,6].map(i => (
-              <div key={i} className="bg-gray-100 rounded-xl overflow-hidden animate-pulse">
-                <div className="w-full aspect-square bg-gray-200" />
-                <div className="h-4 bg-gray-200 mx-2 my-2 rounded-full" />
+
+        {/* ===== CATEGORIES VIEW ===== */}
+        {homeSortMode === "categories" && (
+          <div className="grid grid-cols-3 gap-3">
+            {categories.length === 0 ? (
+              [1,2,3,4,5,6].map(i => (
+                <div key={i} className="bg-gray-100 rounded-xl overflow-hidden animate-pulse">
+                  <div className="w-full aspect-square bg-gray-200" />
+                  <div className="h-4 bg-gray-200 mx-2 my-2 rounded-full" />
+                </div>
+              ))
+            ) : categories.map(cat => {
+              const favKey = `cat_${cat.id}`;
+              let longPressTimer: any = null;
+              return (
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  key={cat.id}
+                  onClick={async () => {
+                    setPageLoading(true);
+                    await fetchSubcategories(cat.id);
+                    setView({ type: "subcategories", id: cat.id, data: cat.name });
+                    setPageLoading(false);
+                  }}
+                  onContextMenu={e => e.preventDefault()}
+                  onTouchStart={e => {
+                    const touch = e.touches[0];
+                    longPressTimer = setTimeout(() => {
+                      useLongPressHandlers({ ...cat, _fav_key: favKey, _fav_type: "category", _fav_label: cat.name, _fav_image: cat.image_url }, e);
+                    }, 600);
+                  }}
+                  onTouchEnd={() => clearTimeout(longPressTimer)}
+                  onTouchMove={() => clearTimeout(longPressTimer)}
+                  onMouseDown={e => {
+                    longPressTimer = setTimeout(() => {
+                      useLongPressHandlers({ ...cat, _fav_key: favKey, _fav_type: "category", _fav_label: cat.name, _fav_image: cat.image_url }, e);
+                    }, 600);
+                  }}
+                  onMouseUp={() => clearTimeout(longPressTimer)}
+                  onMouseLeave={() => clearTimeout(longPressTimer)}
+                  className={`bg-white rounded-xl border ${isFavorite(favKey) ? "border-yellow-400" : "border-gray-100"} shadow-sm flex flex-col items-center overflow-hidden hover:${theme.border} transition-colors relative`}
+                >
+                  {isFavorite(favKey) && <span className="absolute top-1 right-1 text-yellow-400 text-xs">⭐</span>}
+                  <div className="w-full aspect-square overflow-hidden bg-gray-50">
+                    <img
+                      src={cat.image_url}
+                      alt={cat.name}
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                      draggable={false}
+                      onDragStart={e => e.preventDefault()}
+                    />
+                  </div>
+                  <span className="font-bold text-gray-700 text-[10px] text-center w-full px-1 py-1.5 leading-tight">{cat.name}</span>
+                </motion.button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ===== MOST PURCHASED VIEW ===== */}
+        {homeSortMode === "most_purchased" && (
+          <div className="grid grid-cols-3 gap-3">
+            {mostPurchasedLoading ? (
+              [1,2,3,4,5,6,7,8,9].map(i => (
+                <div key={i} className="bg-gray-100 rounded-xl overflow-hidden animate-pulse">
+                  <div className="w-full aspect-square bg-gray-200" />
+                  <div className="h-4 bg-gray-200 mx-2 my-2 rounded-full" />
+                </div>
+              ))
+            ) : mostPurchased.length === 0 ? (
+              <div className="col-span-3 text-center text-gray-400 py-10 text-sm">لا توجد بيانات بعد</div>
+            ) : mostPurchased.slice(0, 9).map((prod: any) => (
+              <motion.div
+                whileTap={{ scale: 0.95 }}
+                key={prod.id}
+                className="bg-white rounded-xl border border-gray-100 shadow-sm flex flex-col items-center overflow-hidden"
+              >
+                <div className="w-full aspect-square overflow-hidden bg-gray-50">
+                  <img
+                    src={prod.image_url || ""}
+                    alt={prod.name}
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                    draggable={false}
+                    onDragStart={e => e.preventDefault()}
+                    onContextMenu={e => e.preventDefault()}
+                  />
+                </div>
+                <div className="w-full px-1 py-1.5">
+                  <p className="font-bold text-gray-700 text-[10px] text-center leading-tight truncate">{prod.name}</p>
+                  <p className={`${theme.text} text-[10px] text-center font-bold`}>{parseFloat(prod.price || 0).toFixed(2)}$</p>
+                  <p className="text-gray-400 text-[9px] text-center">🛒 {prod.purchase_count} مرة</p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+
+        {/* ===== FAVORITES VIEW ===== */}
+        {homeSortMode === "favorites" && (
+          <div>
+            {favorites.length === 0 ? (
+              <div className="text-center py-10 text-gray-400">
+                <Star size={40} className="mx-auto mb-3 text-gray-200" />
+                <p className="text-sm">لا توجد مفضلات بعد</p>
+                <p className="text-xs mt-1">اضغط مطولاً على أي قسم أو منتج لإضافته</p>
               </div>
-            ))
-          ) : categories.map(cat => (
-            <motion.button 
-              whileTap={{ scale: 0.95 }}
-              key={cat.id}
-              onClick={async () => {
-                setPageLoading(true);
-                await fetchSubcategories(cat.id);
-                setView({ type: "subcategories", id: cat.id, data: cat.name });
-                setPageLoading(false);
-              }}
-              className={`bg-white rounded-xl border border-gray-100 shadow-sm flex flex-col items-center overflow-hidden hover:${theme.border} transition-colors`}
-            >
-              <div className="w-full aspect-square overflow-hidden bg-gray-50">
-                <img src={cat.image_url} alt={cat.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            ) : (
+              <div className="grid grid-cols-3 gap-3">
+                {favorites.slice(0, 9).map((fav: any) => (
+                  <div key={fav._fav_key} className="relative">
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
+                      onClick={async () => {
+                        if (fav._fav_type === "category") {
+                          setPageLoading(true);
+                          await fetchSubcategories(fav.id);
+                          setView({ type: "subcategories", id: fav.id, data: fav.name });
+                          setPageLoading(false);
+                        } else if (fav._fav_type === "subcategory") {
+                          setPageLoading(true);
+                          setView({ type: "sub_sub_categories", id: fav.id, data: fav.name, catId: fav.category_id });
+                          setPageLoading(false);
+                        } else if (fav._fav_type === "sub_sub_category") {
+                          setPageLoading(true);
+                          setView({ type: "products", id: fav.id, data: fav.name, catId: fav.category_id, subId: fav.subcategory_id });
+                          setPageLoading(false);
+                        }
+                      }}
+                      className="w-full bg-white rounded-xl border border-yellow-300 shadow-sm flex flex-col items-center overflow-hidden"
+                      onContextMenu={e => e.preventDefault()}
+                    >
+                      <div className="w-full aspect-square overflow-hidden bg-gray-50 relative">
+                        <img
+                          src={fav._fav_image || ""}
+                          alt={fav._fav_label}
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                          draggable={false}
+                          onDragStart={e => e.preventDefault()}
+                          onContextMenu={e => e.preventDefault()}
+                        />
+                        <span className="absolute top-1 right-1 text-yellow-400 text-xs">⭐</span>
+                      </div>
+                      <span className="font-bold text-gray-700 text-[10px] text-center w-full px-1 py-1.5 leading-tight truncate">{fav._fav_label}</span>
+                    </motion.button>
+                    <button
+                      onClick={() => removeFromFavorites(fav._fav_key)}
+                      className="absolute -top-1 -left-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-[10px] z-10"
+                    >✕</button>
+                  </div>
+                ))}
               </div>
-              <span className="font-bold text-gray-700 text-[10px] text-center w-full px-1 py-1.5 leading-tight">{cat.name}</span>
-            </motion.button>
-          ))}
-        </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Dynamic Offers */}
@@ -1429,29 +1625,49 @@ export default function App() {
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-3">
-          {subcategories.map(sub => (
-            <motion.button 
-              whileTap={{ scale: 0.95 }}
-              key={sub.id}
-              onClick={async () => {
-                setPageLoading(true);
-                const subSubs = await fetchSubSubCategories(sub.id);
-                await fetchProducts(sub.id);
-                if (subSubs.length > 0) {
-                  setView({ type: "sub_sub_categories", id: sub.id, data: sub.name, catId: view.id });
-                } else {
-                  setView({ type: "products", id: sub.id, data: sub.name, fromSubSub: false });
-                }
-                setPageLoading(false);
-              }}
-              className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center overflow-hidden active:scale-95 transition-transform"
-            >
-              <div className="w-full aspect-square overflow-hidden bg-gray-50">
-                <img src={sub.image_url || "https://picsum.photos/seed/sub/100/100"} alt={sub.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-              </div>
-              <span className="font-bold text-gray-700 text-[9px] text-center w-full px-1 py-1.5 leading-tight">{sub.name}</span>
-            </motion.button>
-          ))}
+          {subcategories.map(sub => {
+            const favKey = `sub_${sub.id}`;
+            let lpTimer: any = null;
+            return (
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                key={sub.id}
+                onClick={async () => {
+                  setPageLoading(true);
+                  const subSubs = await fetchSubSubCategories(sub.id);
+                  await fetchProducts(sub.id);
+                  if (subSubs.length > 0) {
+                    setView({ type: "sub_sub_categories", id: sub.id, data: sub.name, catId: view.id });
+                  } else {
+                    setView({ type: "products", id: sub.id, data: sub.name, fromSubSub: false });
+                  }
+                  setPageLoading(false);
+                }}
+                onContextMenu={e => e.preventDefault()}
+                onTouchStart={e => { lpTimer = setTimeout(() => useLongPressHandlers({ ...sub, _fav_key: favKey, _fav_type: "subcategory", _fav_label: sub.name, _fav_image: sub.image_url }, e), 600); }}
+                onTouchEnd={() => clearTimeout(lpTimer)}
+                onTouchMove={() => clearTimeout(lpTimer)}
+                onMouseDown={e => { lpTimer = setTimeout(() => useLongPressHandlers({ ...sub, _fav_key: favKey, _fav_type: "subcategory", _fav_label: sub.name, _fav_image: sub.image_url }, e), 600); }}
+                onMouseUp={() => clearTimeout(lpTimer)}
+                onMouseLeave={() => clearTimeout(lpTimer)}
+                className={`bg-white rounded-2xl border ${isFavorite(favKey) ? "border-yellow-400" : "border-gray-100"} shadow-sm flex flex-col items-center overflow-hidden active:scale-95 transition-transform relative`}
+              >
+                {isFavorite(favKey) && <span className="absolute top-1 right-1 text-yellow-400 text-xs z-10">⭐</span>}
+                <div className="w-full aspect-square overflow-hidden bg-gray-50">
+                  <img
+                    src={sub.image_url || "https://picsum.photos/seed/sub/100/100"}
+                    alt={sub.name}
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                    draggable={false}
+                    onDragStart={e => e.preventDefault()}
+                    onContextMenu={e => e.preventDefault()}
+                  />
+                </div>
+                <span className="font-bold text-gray-700 text-[9px] text-center w-full px-1 py-1.5 leading-tight">{sub.name}</span>
+              </motion.button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -1471,24 +1687,44 @@ export default function App() {
         {/* Sub-sub-categories */}
         {subSubCategories.length > 0 && (
           <div className="grid grid-cols-3 gap-3">
-            {subSubCategories.map(ss => (
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                key={ss.id}
-                onClick={async () => {
-                  setPageLoading(true);
-                  await fetchProducts(ss.id, true);
-                  setView({ type: "products", id: ss.id, data: ss.name, fromSubSub: true, subId: view.id, subName: view.data, catId: view.catId });
-                  setPageLoading(false);
-                }}
-                className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center overflow-hidden active:scale-95 transition-transform"
-              >
-                <div className="w-full aspect-square overflow-hidden bg-gray-50">
-                  <img src={ss.image_url || "https://picsum.photos/seed/ss/100/100"} alt={ss.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                </div>
-                <span className="font-bold text-gray-700 text-[9px] text-center w-full px-1 py-1.5 leading-tight">{ss.name}</span>
-              </motion.button>
-            ))}
+            {subSubCategories.map(ss => {
+              const favKey = `sss_${ss.id}`;
+              let lpTimer2: any = null;
+              return (
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  key={ss.id}
+                  onClick={async () => {
+                    setPageLoading(true);
+                    await fetchProducts(ss.id, true);
+                    setView({ type: "products", id: ss.id, data: ss.name, fromSubSub: true, subId: view.id, subName: view.data, catId: view.catId });
+                    setPageLoading(false);
+                  }}
+                  onContextMenu={e => e.preventDefault()}
+                  onTouchStart={e => { lpTimer2 = setTimeout(() => useLongPressHandlers({ ...ss, _fav_key: favKey, _fav_type: "sub_sub_category", _fav_label: ss.name, _fav_image: ss.image_url, category_id: view.catId, subcategory_id: view.id }, e), 600); }}
+                  onTouchEnd={() => clearTimeout(lpTimer2)}
+                  onTouchMove={() => clearTimeout(lpTimer2)}
+                  onMouseDown={e => { lpTimer2 = setTimeout(() => useLongPressHandlers({ ...ss, _fav_key: favKey, _fav_type: "sub_sub_category", _fav_label: ss.name, _fav_image: ss.image_url, category_id: view.catId, subcategory_id: view.id }, e), 600); }}
+                  onMouseUp={() => clearTimeout(lpTimer2)}
+                  onMouseLeave={() => clearTimeout(lpTimer2)}
+                  className={`bg-white rounded-2xl border ${isFavorite(favKey) ? "border-yellow-400" : "border-gray-100"} shadow-sm flex flex-col items-center overflow-hidden active:scale-95 transition-transform relative`}
+                >
+                  {isFavorite(favKey) && <span className="absolute top-1 right-1 text-yellow-400 text-xs z-10">⭐</span>}
+                  <div className="w-full aspect-square overflow-hidden bg-gray-50">
+                    <img
+                      src={ss.image_url || "https://picsum.photos/seed/ss/100/100"}
+                      alt={ss.name}
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                      draggable={false}
+                      onDragStart={e => e.preventDefault()}
+                      onContextMenu={e => e.preventDefault()}
+                    />
+                  </div>
+                  <span className="font-bold text-gray-700 text-[9px] text-center w-full px-1 py-1.5 leading-tight">{ss.name}</span>
+                </motion.button>
+              );
+            })}
           </div>
         )}
 
@@ -7529,6 +7765,75 @@ const AdminPanel = ({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ===== LONG PRESS FAVORITE OVERLAY ===== */}
+      <AnimatePresence>
+        {longPressTarget && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.45)" }}
+            onClick={() => setLongPressTarget(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.85, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.85, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 22 }}
+              className="bg-white rounded-2xl shadow-2xl p-5 mx-6 w-72 flex flex-col items-center gap-4"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* صورة العنصر */}
+              {longPressTarget._fav_image && (
+                <div className="w-20 h-20 rounded-xl overflow-hidden bg-gray-100">
+                  <img
+                    src={longPressTarget._fav_image}
+                    alt={longPressTarget._fav_label}
+                    className="w-full h-full object-cover"
+                    draggable={false}
+                    onDragStart={e => e.preventDefault()}
+                    onContextMenu={e => e.preventDefault()}
+                  />
+                </div>
+              )}
+              <p className="font-bold text-gray-800 text-center text-sm">{longPressTarget._fav_label}</p>
+
+              {isFavorite(longPressTarget._fav_key) ? (
+                <div className="flex flex-col items-center gap-2 w-full">
+                  <div className="flex items-center gap-1 text-yellow-500 font-bold text-sm">
+                    <Star size={16} fill="currentColor" />
+                    <span>موجود في المفضلة</span>
+                  </div>
+                  <button
+                    onClick={() => { removeFromFavorites(longPressTarget._fav_key); setLongPressTarget(null); }}
+                    className="w-full py-2.5 rounded-xl bg-red-50 text-red-500 font-bold text-sm"
+                  >
+                    إزالة من المفضلة
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => addToFavorites(longPressTarget)}
+                  className={`w-full py-3 rounded-xl ${theme.button} text-white font-bold text-sm flex items-center justify-center gap-2`}
+                >
+                  <Star size={16} fill="currentColor" />
+                  إضافة إلى المفضلة
+                </button>
+              )}
+
+              <button
+                onClick={() => setLongPressTarget(null)}
+                className="text-gray-400 text-sm"
+              >
+                إلغاء
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* ===== END LONG PRESS OVERLAY ===== */}
     </div>
   );
 }
