@@ -3891,9 +3891,11 @@ async function startServer() {
         const apiProd = apiMap.get(extId);
 
         if (!apiProd) {
-          // المنتج اختفى تماماً من API → احذفه من قاعدة البيانات
-          await supabase.from("products").delete().eq("id", dbProd.id);
-          deleted++;
+          // المنتج اختفى تماماً من API → ضعه رمادياً (available = false) بدل الحذف
+          if (dbProd.available) {
+            await supabase.from("products").update({ available: false }).eq("id", dbProd.id);
+            markedUnavailable++;
+          }
           continue;
         }
 
@@ -3920,7 +3922,7 @@ async function startServer() {
         }
       }
 
-      console.log(`[AUTO-SYNC] اكتملت: تحديث=${updated}, تعطيل=${markedUnavailable}, استعادة=${restored}, حذف=${deleted}`);
+      console.log(`[AUTO-SYNC] اكتملت: تحديث=${updated}, تعطيل=${markedUnavailable}, استعادة=${restored}`);
     } catch (e: any) {
       console.error("[AUTO-SYNC] خطأ:", e.message);
     }
@@ -3928,8 +3930,8 @@ async function startServer() {
 
   // تشغيل فوري بعد 10 ثوانٍ ثم كل ساعة
   setTimeout(autoSyncProducts, 10000);
-  setInterval(autoSyncProducts, 60 * 60 * 1000);
-  console.log("[AUTO-SYNC] مجدول — كل ساعة");
+  setInterval(autoSyncProducts, 5 * 60 * 1000);
+  console.log("[AUTO-SYNC] مجدول — كل 5 دقائق");
 
   // =================== TELEGRAM BOTS ===================
   startBots();
