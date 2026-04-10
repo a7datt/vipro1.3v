@@ -1312,7 +1312,7 @@ export default function App() {
       <div className="space-y-6 pb-20">
         {/* Hero Carousel */}
         <div className="px-4">
-          <div className={`h-44 bg-gray-100 rounded-2xl overflow-hidden relative shadow-lg ${theme.shadow}`}>
+          <div className={`aspect-[3/1] bg-gray-100 rounded-2xl overflow-hidden relative shadow-lg ${theme.shadow}`}>
             {banners.length > 0 ? (
               <AnimatePresence mode="wait">
                 <motion.img
