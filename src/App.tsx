@@ -1060,13 +1060,15 @@ export default function App() {
   // --- UI Components ---
 
   const Header = () => (
-    <header className="fixed top-0 left-0 right-0 h-14 bg-white/95 backdrop-blur-sm border-b border-gray-100/80 flex items-center justify-between px-4 z-40 shadow-sm">
-      <button onClick={() => setIsDrawerOpen(true)} className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-50 transition-colors">
-        <Menu size={20} className="text-gray-700" />
-      </button>
+    <header className="fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-100 flex items-center justify-between px-4 z-40">
+      <div className="flex items-center gap-3">
+        <button onClick={() => setIsDrawerOpen(true)} className="p-2 hover:bg-gray-50 rounded-full">
+          <Menu size={24} className="text-gray-700" />
+        </button>
+      </div>
 
-      <div className="flex items-center gap-2">
-        <div className="w-8 h-8 flex items-center justify-center overflow-hidden">
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2">
+        <div className="w-10 h-10 flex items-center justify-center overflow-hidden">
           <img 
             src="https://i.ibb.co/5WZRchqw/1764620392904-removebg-preview-1.png" 
             alt="Logo" 
@@ -1074,22 +1076,21 @@ export default function App() {
             referrerPolicy="no-referrer"
           />
         </div>
-        <span className={`font-black text-base tracking-tight ${user?.is_vip ? 'text-amber-600' : 'text-gray-800'}`}>
-          فيبرو{user?.is_vip && <span className="text-amber-500 text-xs font-bold mr-1"> VIP</span>}
+        <span className={`font-bold text-gray-800 hidden sm:block ${user?.is_vip ? 'text-amber-600' : ''}`}>
+          فيبرو {user?.is_vip && 'VIP'}
         </span>
       </div>
       
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-4">
         {user && (
-          <div className={`${theme.bgLight} ${theme.text} flex items-center gap-1 px-3 py-1.5 rounded-full`}>
-            <Wallet size={13} />
-            <span className="font-bold text-xs">{user.balance.toFixed(2)} $</span>
+          <div className={`${theme.textDark} flex items-center`}>
+            <span className="font-bold">{user.balance.toFixed(2)} $</span>
           </div>
         )}
-        <button onClick={() => setNotificationsOpen(true)} className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-50 transition-colors relative">
-          <Bell size={20} className="text-gray-600" />
+        <button onClick={() => setNotificationsOpen(true)} className="p-2 hover:bg-gray-50 rounded-full relative">
+          <Bell size={22} className="text-gray-600" />
           {(Array.isArray(notifications) ? notifications : []).some(n => !n.is_read) && (
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
           )}
         </button>
       </div>
@@ -1184,34 +1185,50 @@ export default function App() {
   const BottomNav = () => {
     const pendingOrders = orders.filter((o: any) => o.status === "pending" || o.status === "pending_admin" || o.status === "processing").length;
     const unreadMsgs = user?.unread_support_count || 0;
-    const navItems = [
-      { id: "home",    icon: <Home size={20} />,        label: "الرئيسية", badge: 0,             action: () => { setCheckoutOrderResult(null); setActiveTab("home"); setView({ type: "main" }); } },
-      { id: "wallet",  icon: <Wallet size={20} />,      label: "شحن",      badge: 0,             action: () => { setCheckoutOrderResult(null); setActiveTab("wallet"); } },
-      { id: "orders",  icon: <ShoppingBag size={20} />, label: "الطلبات",  badge: pendingOrders, action: () => { setCheckoutOrderResult(null); setActiveTab("orders"); } },
-      { id: "profile", icon: <User size={20} />,        label: "حسابي",    badge: unreadMsgs,    action: () => { setCheckoutOrderResult(null); setActiveTab("profile"); } },
-    ];
     return (
-    <nav className="fixed bottom-0 left-0 right-0 h-16 bg-white/95 backdrop-blur-sm border-t border-gray-100/80 flex items-center justify-around z-40 shadow-[0_-1px_12px_rgba(0,0,0,0.06)]">
-      {navItems.map(item => {
-        const isActive = activeTab === item.id;
-        return (
-          <button
-            key={item.id}
-            onClick={item.action}
-            className="flex flex-col items-center gap-0.5 flex-1 py-1 relative"
-          >
-            <div className={`relative flex items-center justify-center w-10 h-7 rounded-full transition-all duration-200 ${isActive ? `${theme.bgLight}` : ''}`}>
-              <span className={`transition-colors duration-200 ${isActive ? theme.text : 'text-gray-400'}`}>{item.icon}</span>
-              {item.badge > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[8px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">
-                  {item.badge > 9 ? "9+" : item.badge}
-                </span>
-              )}
-            </div>
-            <span className={`text-[9px] font-semibold transition-colors duration-200 ${isActive ? theme.text : 'text-gray-400'}`}>{item.label}</span>
-          </button>
-        );
-      })}
+    <nav className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-gray-100 flex items-center justify-around z-40">
+      <button 
+        onClick={() => { setCheckoutOrderResult(null); setActiveTab("home"); setView({ type: "main" }); }}
+        className={`flex flex-col items-center gap-1 ${activeTab === "home" ? theme.text : "text-gray-400"}`}
+      >
+        <Home size={22} />
+        <span className="text-[10px] font-medium">الرئيسية</span>
+      </button>
+      <button 
+        onClick={() => { setCheckoutOrderResult(null); setActiveTab("wallet"); }}
+        className={`flex flex-col items-center gap-1 ${activeTab === "wallet" ? theme.text : "text-gray-400"}`}
+      >
+        <Wallet size={22} />
+        <span className="text-[10px] font-medium">شحن</span>
+      </button>
+      <button 
+        onClick={() => { setCheckoutOrderResult(null); setActiveTab("orders"); }}
+        className={`flex flex-col items-center gap-1 ${activeTab === "orders" ? theme.text : "text-gray-400"}`}
+      >
+        <div className="relative">
+          <ShoppingBag size={22} />
+          {pendingOrders > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">
+              {pendingOrders > 9 ? "9+" : pendingOrders}
+            </span>
+          )}
+        </div>
+        <span className="text-[10px] font-medium">الطلبات</span>
+      </button>
+      <button 
+        onClick={() => { setCheckoutOrderResult(null); setActiveTab("profile"); }}
+        className={`flex flex-col items-center gap-1 ${activeTab === "profile" ? theme.text : "text-gray-400"}`}
+      >
+        <div className="relative">
+          <User size={22} />
+          {unreadMsgs > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">
+              {unreadMsgs > 9 ? "9+" : unreadMsgs}
+            </span>
+          )}
+        </div>
+        <span className="text-[10px] font-medium">حسابي</span>
+      </button>
     </nav>
     );
   };
@@ -1271,7 +1288,7 @@ export default function App() {
   );
 
   const DrawerItem = ({ icon, label, onClick, className = "" }: any) => (
-    <button onClick={onClick} className={`w-full flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors ${className}`}>
+    <button onClick={onClick} className={`w-full flex items-center gap-4 px-6 py-4 hover:bg-gray-50 transition-colors ${className}`}>
       <span className="text-gray-500">{icon}</span>
       <span className="font-medium">{label}</span>
     </button>
@@ -1292,10 +1309,10 @@ export default function App() {
     }, [banners]);
 
     return (
-      <div className="space-y-5 pb-6">
+      <div className="space-y-6 pb-20">
         {/* Hero Carousel */}
         <div className="px-4">
-          <div className={`aspect-[16/6] bg-gray-100 rounded-2xl overflow-hidden relative shadow-md ${theme.shadow}`}>
+          <div className={`aspect-[3/1] bg-gray-100 rounded-2xl overflow-hidden relative shadow-lg ${theme.shadow}`}>
             {banners.length > 0 ? (
               <AnimatePresence mode="wait">
                 <motion.img
@@ -1331,20 +1348,21 @@ export default function App() {
 
       {/* Categories */}
       <div className="px-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-bold text-gray-800 text-sm">الأقسام الرئيسية</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold text-gray-800">الأقسام الرئيسية</h3>
+          <button className={`${theme.text} text-sm font-medium`}>عرض الكل</button>
         </div>
-        <div className="grid grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-3 gap-3">
           {categories.length === 0 ? (
             [1,2,3,4,5,6].map(i => (
-              <div key={i} className="bg-gray-100 rounded-2xl overflow-hidden animate-pulse">
+              <div key={i} className="bg-gray-100 rounded-xl overflow-hidden animate-pulse">
                 <div className="w-full aspect-square bg-gray-200" />
-                <div className="h-3 bg-gray-200 mx-2 my-2 rounded-full" />
+                <div className="h-4 bg-gray-200 mx-2 my-2 rounded-full" />
               </div>
             ))
           ) : categories.map(cat => (
             <motion.button 
-              whileTap={{ scale: 0.94 }}
+              whileTap={{ scale: 0.95 }}
               key={cat.id}
               onClick={async () => {
                 setPageLoading(true);
@@ -1352,7 +1370,7 @@ export default function App() {
                 setView({ type: "subcategories", id: cat.id, data: cat.name });
                 setPageLoading(false);
               }}
-              className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center overflow-hidden active:border-gray-200 transition-all"
+              className={`bg-white rounded-xl border border-gray-100 shadow-sm flex flex-col items-center overflow-hidden hover:${theme.border} transition-colors`}
             >
               <div className="w-full aspect-square overflow-hidden bg-gray-50">
                 <img src={cat.image_url} alt={cat.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -1366,22 +1384,22 @@ export default function App() {
       {/* Dynamic Offers */}
       {offers.length > 0 && (
         <div className="px-4">
-          <h3 className="font-bold text-gray-800 text-sm mb-3">عروض مميزة</h3>
-          <div className="space-y-2.5">
+          <h3 className="font-bold text-gray-800 mb-4">عروض مميزة</h3>
+          <div className="space-y-4">
             {offers.map(offer => (
-              <div key={offer.id} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-3">
-                <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
+              <div key={offer.id} className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center gap-4">
+                <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center overflow-hidden">
                   {offer.image_url ? (
                     <img src={offer.image_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   ) : (
-                    <ImageIcon size={18} className="text-orange-500" />
+                    <ImageIcon size={24} className="text-orange-600" />
                   )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-bold text-gray-800 text-xs">{offer.title}</h4>
-                  <p className="text-gray-400 text-[10px] truncate">{offer.description}</p>
+                <div className="flex-1">
+                  <h4 className="font-bold text-gray-800 text-sm">{offer.title}</h4>
+                  <p className="text-gray-400 text-xs">{offer.description}</p>
                 </div>
-                <ChevronRight size={16} className="text-gray-300 shrink-0" />
+                <ChevronRight size={20} className="text-gray-300" />
               </div>
             ))}
           </div>
@@ -1392,25 +1410,28 @@ export default function App() {
 };
 
   const SubcategoriesView = () => (
-    <div className="px-3 pb-24">
-      <div className="flex items-center gap-3 mb-5 pt-2">
-        <button onClick={() => setView({ type: "main" })} className="w-9 h-9 bg-white border border-gray-100 rounded-xl flex items-center justify-center shadow-sm">
-          <ArrowRight size={18} className="text-gray-600" />
+    <div className="px-4 space-y-4 pb-20">
+      <div className="flex items-center gap-2 mb-6">
+        <button onClick={() => setView({ type: "main" })} className="p-2 bg-gray-100 rounded-full">
+          <ArrowRight size={20} className="text-gray-600" />
         </button>
-        <h2 className="text-lg font-bold text-gray-800">{view.data}</h2>
+        <h2 className="text-xl font-bold text-gray-800">{view.data}</h2>
       </div>
       {subcategories.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-center space-y-3">
-          <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-200">
-            <LayoutGrid size={32} />
+        <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+          <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-200">
+            <LayoutGrid size={40} />
           </div>
-          <p className="font-bold text-gray-400 text-sm">لم تتم إضافة أقسام بعد</p>
+          <div>
+            <p className="font-bold text-gray-500 text-lg">لم تتم إضافة أقسام بعد</p>
+            <p className="text-gray-400 text-sm mt-1">عُد لاحقاً، سيتم إضافة محتوى قريباً</p>
+          </div>
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-3 gap-3">
           {subcategories.map(sub => (
             <motion.button 
-              whileTap={{ scale: 0.94 }}
+              whileTap={{ scale: 0.95 }}
               key={sub.id}
               onClick={async () => {
                 setPageLoading(true);
@@ -1423,7 +1444,7 @@ export default function App() {
                 }
                 setPageLoading(false);
               }}
-              className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center overflow-hidden transition-all"
+              className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center overflow-hidden active:scale-95 transition-transform"
             >
               <div className="w-full aspect-square overflow-hidden bg-gray-50">
                 <img src={sub.image_url || "https://picsum.photos/seed/sub/100/100"} alt={sub.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -1439,20 +1460,20 @@ export default function App() {
   const SubSubCategoriesView = () => {
     const directProducts = products.filter(p => !p.sub_sub_category_id);
     return (
-      <div className="px-3 pb-24">
-        <div className="flex items-center gap-3 mb-5 pt-2">
-          <button onClick={() => setView({ type: "subcategories", id: view.catId, data: view.data })} className="w-9 h-9 bg-white border border-gray-100 rounded-xl flex items-center justify-center shadow-sm">
-            <ArrowRight size={18} className="text-gray-600" />
+      <div className="px-4 space-y-4 pb-20">
+        <div className="flex items-center gap-2 mb-6">
+          <button onClick={() => setView({ type: "subcategories", id: view.catId, data: view.data })} className="p-2 bg-gray-100 rounded-full">
+            <ArrowRight size={20} className="text-gray-600" />
           </button>
-          <h2 className="text-lg font-bold text-gray-800">{view.data}</h2>
+          <h2 className="text-xl font-bold text-gray-800">{view.data}</h2>
         </div>
 
         {/* Sub-sub-categories */}
         {subSubCategories.length > 0 && (
-          <div className="grid grid-cols-3 gap-2.5 mb-4">
+          <div className="grid grid-cols-3 gap-3">
             {subSubCategories.map(ss => (
               <motion.button
-                whileTap={{ scale: 0.94 }}
+                whileTap={{ scale: 0.95 }}
                 key={ss.id}
                 onClick={async () => {
                   setPageLoading(true);
@@ -1460,7 +1481,7 @@ export default function App() {
                   setView({ type: "products", id: ss.id, data: ss.name, fromSubSub: true, subId: view.id, subName: view.data, catId: view.catId });
                   setPageLoading(false);
                 }}
-                className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center overflow-hidden transition-all"
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center overflow-hidden active:scale-95 transition-transform"
               >
                 <div className="w-full aspect-square overflow-hidden bg-gray-50">
                   <img src={ss.image_url || "https://picsum.photos/seed/ss/100/100"} alt={ss.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -1473,69 +1494,62 @@ export default function App() {
 
         {/* Direct products (no sub-sub-category) */}
         {directProducts.length > 0 && (
-          <div>
+          <div className="space-y-4">
             {subSubCategories.length > 0 && (
-              <p className="text-xs font-bold text-gray-400 px-1 mb-2">منتجات القسم</p>
+              <p className="text-xs font-bold text-gray-400 px-1">منتجات القسم</p>
             )}
-            <div className="grid grid-cols-2 gap-3">
-              {directProducts.map(prod => {
-                const isUnavailable = prod.available === false;
-                const price = prod.store_type === 'quantities'
-                  ? `${(parseFloat(prod.price_per_unit as any) || 0).toFixed(4)} $`
-                  : `${(parseFloat(prod.price as any) || 0).toFixed(2)} $`;
-                return (
-                <motion.div
-                  key={prod.id}
-                  whileTap={{ scale: isUnavailable ? 1 : 0.97 }}
-                  className={`bg-white rounded-2xl border overflow-hidden flex flex-col transition-all ${isUnavailable ? "border-gray-100 opacity-50 grayscale" : "border-gray-100 shadow-sm"}`}
-                >
-                  <div className="relative w-full aspect-square bg-gray-50 overflow-hidden">
-                    <img src={prod.image_url || "https://picsum.photos/seed/prod/200/200"} alt={prod.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    {prod.store_type === 'external_api' && !isUnavailable && (
-                      <div className="absolute top-2 right-2 bg-blue-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
-                        <Zap size={8} />
-                        فوري
-                      </div>
-                    )}
-                    {isUnavailable && (
-                      <div className="absolute inset-0 bg-gray-100/60 flex items-center justify-center">
-                        <span className="text-[10px] bg-white/90 text-gray-500 px-2 py-1 rounded-full font-bold shadow-sm">غير متوفر</span>
-                      </div>
-                    )}
+            <div className="grid grid-cols-1 gap-4">
+              {directProducts.map(prod => (
+                <div key={prod.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden">
+                      <img src={prod.image_url || "https://picsum.photos/seed/prod/100/100"} alt={prod.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-bold text-gray-800">{prod.name}</h4>
+                      <p className={`${theme.text} font-bold`}>
+                        {prod.store_type === 'quantities'
+                          ? `${(parseFloat(prod.price_per_unit as any) || 0).toFixed(6)} $ / وحدة`
+                          : `${(parseFloat(prod.price as any) || 0).toFixed(2)} $`}
+                      </p>
+                    </div>
                   </div>
-                  <div className="p-2.5 flex flex-col gap-2 flex-1">
-                    <h4 className="font-bold text-gray-800 text-xs leading-snug line-clamp-2">{prod.name}</h4>
-                    <p className={`text-sm font-black ${isUnavailable ? "text-gray-300" : theme.text}`}>{price}</p>
-                    <button
-                      disabled={isUnavailable}
-                      onClick={() => {
-                        if (isUnavailable) return;
-                        if (!user) return setView({ type: "login" });
-                        if (prod.store_type === 'quick_order') {
-                          setView({ type: "quick_order", data: prod });
-                        } else {
-                          setCheckoutQuantity(parseInt(String(prod.min_quantity)) || 0);
-                          setView({ type: "checkout", data: prod });
-                        }
-                      }}
-                      className={`mt-auto w-full py-2 rounded-xl text-xs font-bold transition-all ${isUnavailable ? "bg-gray-100 text-gray-300 cursor-not-allowed" : `${theme.button} text-white active:scale-95`}`}
-                    >
-                      {isUnavailable ? "غير متوفر" : prod.store_type === 'quick_order' ? "طلب سريع" : "شراء الآن"}
-                    </button>
-                  </div>
-                </motion.div>
-                );
-              })}
+                  <p className="text-gray-500 text-sm leading-relaxed">{prod.description || "لا يوجد وصف متاح لهذا المنتج."}</p>
+                  {prod.store_type === 'external_api' && (
+                    <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 text-[10px] font-bold px-3 py-1.5 rounded-lg w-fit">
+                      <ExternalLink size={11} />
+                      شحن فوري
+                    </div>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (!user) return setView({ type: "login" });
+                      if (prod.store_type === 'quick_order') {
+                        setView({ type: "quick_order", data: prod });
+                      } else {
+                        setCheckoutQuantity(parseInt(String(prod.min_quantity)) || 0);
+                        setView({ type: "checkout", data: prod });
+                      }
+                    }}
+                    className={`w-full ${theme.button} text-white py-3 rounded-xl font-bold ${theme.buttonHover} transition-colors`}
+                  >
+                    {prod.store_type === 'quick_order' ? "طلب سريع" : prod.store_type === 'external_api' ? "شراء الآن ⚡" : "شراء الآن"}
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
         {subSubCategories.length === 0 && directProducts.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-24 text-center space-y-3">
-            <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-200">
-              <ShoppingBag size={32} />
+          <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+            <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-200">
+              <ShoppingBag size={40} />
             </div>
-            <p className="font-bold text-gray-400 text-sm">لم تتم إضافة منتجات بعد</p>
+            <div>
+              <p className="font-bold text-gray-500 text-lg">لم تتم إضافة منتجات بعد</p>
+              <p className="text-gray-400 text-sm mt-1">عُد لاحقاً، سيتم إضافة محتوى قريباً</p>
+            </div>
           </div>
         )}
       </div>
@@ -1543,9 +1557,8 @@ export default function App() {
   };
 
   const ProductsView = () => (
-    <div className="px-3 pb-24">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-5 pt-2">
+    <div className="px-4 space-y-4 pb-20">
+      <div className="flex items-center gap-2 mb-6">
         <button
           onClick={() => {
             if (view.fromSubSub) {
@@ -1554,76 +1567,69 @@ export default function App() {
               setView({ type: "subcategories", data: "الرجوع" });
             }
           }}
-          className="w-9 h-9 bg-white border border-gray-100 rounded-xl flex items-center justify-center shadow-sm">
-          <ArrowRight size={18} className="text-gray-600" />
+          className="p-2 bg-gray-100 rounded-full">
+          <ArrowRight size={20} className="text-gray-600" />
         </button>
-        <h2 className="text-lg font-bold text-gray-800">{view.data}</h2>
-        <span className="mr-auto text-xs text-gray-400 font-medium bg-gray-100 px-2.5 py-1 rounded-full">{products.length} منتج</span>
+        <h2 className="text-xl font-bold text-gray-800">{view.data}</h2>
       </div>
-
       {products.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-center space-y-3">
-          <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-200">
-            <ShoppingBag size={32} />
+        <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+          <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-200">
+            <ShoppingBag size={40} />
           </div>
-          <p className="font-bold text-gray-400 text-sm">لم تتم إضافة منتجات بعد</p>
+          <div>
+            <p className="font-bold text-gray-500 text-lg">لم تتم إضافة منتجات بعد</p>
+            <p className="text-gray-400 text-sm mt-1">عُد لاحقاً، سيتم إضافة منتجات قريباً</p>
+          </div>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-4">
           {products.map(prod => {
             const isUnavailable = prod.available === false;
-            const price = prod.store_type === 'quantities'
-              ? `${(parseFloat(prod.price_per_unit) || 0).toFixed(4)} $`
-              : `${(parseFloat(prod.price) || 0).toFixed(2)} $`;
             return (
-            <motion.div
-              key={prod.id}
-              whileTap={{ scale: isUnavailable ? 1 : 0.97 }}
-              className={`bg-white rounded-2xl border overflow-hidden flex flex-col transition-all ${isUnavailable ? "border-gray-100 opacity-50 grayscale" : "border-gray-100 shadow-sm"}`}
-            >
-              {/* Product Image */}
-              <div className="relative w-full aspect-square bg-gray-50 overflow-hidden">
-                <img
-                  src={prod.image_url || "https://picsum.photos/seed/prod/200/200"}
-                  alt={prod.name}
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-                {prod.store_type === 'external_api' && !isUnavailable && (
-                  <div className="absolute top-2 right-2 bg-blue-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
-                    <Zap size={8} />
-                    فوري
+            <div key={prod.id} className={`bg-white p-4 rounded-2xl border shadow-sm flex flex-col gap-4 transition-all ${isUnavailable ? "border-gray-100 opacity-60 grayscale" : "border-gray-100"}`}>
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden">
+                  <img src={prod.image_url || "https://picsum.photos/seed/prod/100/100"} alt={prod.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-gray-800">{prod.name}</h4>
+                    {isUnavailable && (
+                      <span className="text-[9px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-bold shrink-0">غير متوفر</span>
+                    )}
                   </div>
-                )}
-                {isUnavailable && (
-                  <div className="absolute inset-0 bg-gray-100/60 flex items-center justify-center">
-                    <span className="text-[10px] bg-white/90 text-gray-500 px-2 py-1 rounded-full font-bold shadow-sm">غير متوفر</span>
-                  </div>
-                )}
+                  <p className={`${isUnavailable ? "text-gray-400" : theme.text} font-bold`}>
+                    {prod.store_type === 'quantities'
+                      ? `${(parseFloat(prod.price_per_unit) || 0).toFixed(6)} $ / وحدة`
+                      : `${(parseFloat(prod.price) || 0).toFixed(2)} $`}
+                  </p>
+                </div>
               </div>
-
-              {/* Product Info */}
-              <div className="p-2.5 flex flex-col gap-2 flex-1">
-                <h4 className="font-bold text-gray-800 text-xs leading-snug line-clamp-2">{prod.name}</h4>
-                <p className={`text-sm font-black ${isUnavailable ? "text-gray-300" : theme.text}`}>{price}</p>
-                <button
-                  disabled={isUnavailable}
-                  onClick={() => {
-                    if (isUnavailable) return;
-                    if (!user) return setView({ type: "login" });
-                    if (prod.store_type === 'quick_order') {
-                      setView({ type: "quick_order", data: prod });
-                    } else {
-                      setCheckoutQuantity(parseInt(String(prod.min_quantity)) || 0);
-                      setView({ type: "checkout", data: prod });
-                    }
-                  }}
-                  className={`mt-auto w-full py-2 rounded-xl text-xs font-bold transition-all ${isUnavailable ? "bg-gray-100 text-gray-300 cursor-not-allowed" : `${theme.button} text-white active:scale-95`}`}
-                >
-                  {isUnavailable ? "غير متوفر" : prod.store_type === 'quick_order' ? "طلب سريع" : "شراء الآن"}
-                </button>
-              </div>
-            </motion.div>
+              <p className="text-gray-500 text-sm leading-relaxed">{prod.description || "لا يوجد وصف متاح لهذا المنتج."}</p>
+              {prod.store_type === 'external_api' && !isUnavailable && (
+                <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 text-[10px] font-bold px-3 py-1.5 rounded-lg w-fit">
+                  <ExternalLink size={11} />
+                  شحن فوري
+                </div>
+              )}
+              <button
+                disabled={isUnavailable}
+                onClick={() => {
+                  if (isUnavailable) return;
+                  if (!user) return setView({ type: "login" });
+                  if (prod.store_type === 'quick_order') {
+                    setView({ type: "quick_order", data: prod });
+                  } else {
+                    setCheckoutQuantity(parseInt(String(prod.min_quantity)) || 0);
+                    setView({ type: "checkout", data: prod });
+                  }
+                }}
+                className={`w-full py-3 rounded-xl font-bold transition-colors ${isUnavailable ? "bg-gray-100 text-gray-400 cursor-not-allowed" : `${theme.button} text-white ${theme.buttonHover}`}`}
+              >
+                {isUnavailable ? "غير متوفر حالياً" : prod.store_type === 'quick_order' ? "طلب سريع" : prod.store_type === 'external_api' ? "شراء الآن ⚡" : "شراء الآن"}
+              </button>
+            </div>
             );
           })}
         </div>
@@ -7301,7 +7307,7 @@ const AdminPanel = ({
       <Drawer />
       <NotificationPanel />
       
-      <main className={view.type === "chat" || (isAdmin && adminTab === "chat" && selectedChatUser) ? "pb-16" : "pt-16 pb-24"}>
+      <main className={view.type === "chat" || (isAdmin && adminTab === "chat" && selectedChatUser) ? "pb-16" : "pt-20 pb-24"}>
         <AnimatePresence mode="wait">
           <motion.div
             key={view.type + activeTab}
