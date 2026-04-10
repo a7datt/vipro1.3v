@@ -1428,7 +1428,7 @@ export default function App() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           {subcategories.map(sub => (
             <motion.button 
               whileTap={{ scale: 0.95 }}
@@ -1470,7 +1470,7 @@ export default function App() {
 
         {/* Sub-sub-categories */}
         {subSubCategories.length > 0 && (
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             {subSubCategories.map(ss => (
               <motion.button
                 whileTap={{ scale: 0.95 }}
@@ -5337,7 +5337,7 @@ const AdminStatsTab = ({ adminFetch }: { adminFetch: any }) => {
 
   React.useEffect(() => { fetchStats(); }, [filter]);
 
-  const stats = data || { accepted_orders: 0, rejected_orders: 0, total_payments: 0, gross_revenue: 0, api_cost: 0, profit: 0, profit_margin: 0 };
+  const stats = data || { accepted_orders: 0, rejected_orders: 0, total_payments: 0, gross_revenue: 0, api_cost: 0, profit: 0, profit_margin: 0, net_margin: 0, orders_with_cost: 0, orders_without_cost: 0 };
 
   return (
     <div className="space-y-4">
@@ -5423,7 +5423,7 @@ const AdminStatsTab = ({ adminFetch }: { adminFetch: any }) => {
                 <p className="font-bold text-amber-800">صافي الأرباح</p>
               </div>
               <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">
-                هامش: {stats.profit_margin?.toFixed(1)}%
+                ربح: {stats.profit_margin?.toFixed(1)}% | هامش: {stats.net_margin?.toFixed(1)}%
               </span>
             </div>
             <p className={`text-3xl font-black ${(stats.profit || 0) >= 0 ? "text-amber-700" : "text-red-600"}`}>
@@ -5436,7 +5436,7 @@ const AdminStatsTab = ({ adminFetch }: { adminFetch: any }) => {
               </div>
               <div className="flex justify-between text-[11px]">
                 <span className="text-gray-500">تكلفة API (سعر الشراء)</span>
-                <span className="font-bold text-red-500">- {(stats.api_cost || 0).toFixed(2)} $</span>
+                <span className="font-bold text-red-500">- {(stats.api_cost || 0).toFixed(2)} ${stats.orders_without_cost > 0 && stats.orders_with_cost === 0 ? " ⚠️" : ""}</span>
               </div>
               <div className="border-t border-gray-200 pt-1.5 flex justify-between text-[11px]">
                 <span className="font-bold text-gray-700">صافي الربح</span>
@@ -5684,11 +5684,22 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
           try { metaParsed = JSON.parse(order.meta || "{}"); } catch {}
           const savedPlayerId = metaParsed.playerId || metaParsed.input || metaParsed.player_id || "";
           const lastError = metaParsed.last_api_error || "";
+          const productExtId = order.order_items?.[0]?.products?.external_id || "";
+          const qty = order.order_items?.[0]?.quantity || 1;
+          const currentOverride = overridePlayerIds[order.id];
+          // إذا لم يعدّل الأدمن الحقل، نستخدم savedPlayerId تلقائياً
+          const effectivePlayerId = (currentOverride !== undefined ? currentOverride : savedPlayerId).trim();
           return (
             <div key={order.id} className="border border-amber-100 rounded-xl bg-amber-50/40 p-4 space-y-3">
               <div>
                 <p className="font-bold text-sm text-[var(--brand)]">#{order.id} - {order.product_name}</p>
                 <p className="text-xs text-gray-500">{order.user_name} · {(order.total_amount || order.total_price || 0).toFixed(2)} $</p>
+                {productExtId && (
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    <span className="font-bold">Product ID: </span><span className="font-mono">{productExtId}</span>
+                    {qty > 1 && <span className="font-bold ml-2">الكمية: {qty}</span>}
+                  </p>
+                )}
                 {savedPlayerId && (
                   <p className="text-xs text-gray-600 mt-1 font-mono break-all">
                     <span className="font-bold text-gray-500">Player ID: </span>{savedPlayerId}
@@ -5703,14 +5714,34 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
                 <input
                   type="text"
                   placeholder={savedPlayerId || "أدخل Player ID..."}
-                  value={overridePlayerIds[order.id] ?? ""}
+                  value={currentOverride !== undefined ? currentOverride : savedPlayerId}
                   onChange={e => setOverridePlayerIds(prev => ({ ...prev, [order.id]: e.target.value }))}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none focus:border-[var(--brand)] font-mono"
                 />
               </div>
               <div className="flex gap-2">
-                <button onClick={() => handleOrderAction(order.id, "approved")} className="flex-1 bg-green-500 text-white py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1"><CheckCircle size={12}/>قبول</button>
-                <button onClick={() => { const r = prompt("سبب الرفض:"); handleOrderAction(order.id, "rejected", r || ""); }} className="flex-1 bg-red-100 text-red-600 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1"><XCircle size={12}/>رفض</button>
+                <button
+                  onClick={() => {
+                    const body: any = { status: "approved", admin_response: "" };
+                    if (effectivePlayerId) body.override_player_id = effectivePlayerId;
+                    adminFetch(`/api/admin/orders/${order.id}/status`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(body)
+                    }).then((res: Response) => res.json()).then((data: any) => {
+                      if (data.error) { alert(data.error || "حدث خطأ"); }
+                      else if (data.finalStatus === "completed") { alert("✅ تم التنفيذ بنجاح"); }
+                      else if (data.apiError) { alert(`⏳ تم إرسال الطلب — قيد المعالجة\n\nملاحظة: ${data.apiError}`); }
+                      else { alert("⏳ تم الإرسال — قيد المعالجة"); }
+                      fetchAdminOrders();
+                    });
+                  }}
+                  className="flex-1 bg-green-500 text-white py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1"
+                ><CheckCircle size={12}/>قبول</button>
+                <button
+                  onClick={() => { const r = prompt("سبب الرفض:"); handleOrderAction(order.id, "rejected", r || ""); }}
+                  className="flex-1 bg-red-100 text-red-600 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1"
+                ><XCircle size={12}/>رفض</button>
               </div>
             </div>
           );
@@ -5780,6 +5811,42 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
                   fetchAdminOrders();
                 }} className="w-full text-xs bg-blue-50 text-blue-600 py-2 rounded-xl font-bold border border-blue-100 active:scale-95">🔄 مزامنة مع Ahminix</button>
               )}
+
+              {/* ── تغيير حالة الطلب يدوياً ── */}
+              <div className="bg-white rounded-xl p-3 border border-gray-100 space-y-2">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">تغيير حالة الطلب</p>
+                <div className="flex gap-2">
+                  <select
+                    defaultValue={order.status}
+                    id={`status-select-${order.id}`}
+                    className="flex-1 border border-gray-200 rounded-lg px-2 py-2 text-xs outline-none focus:border-[var(--brand)] bg-white"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <option value="pending_admin">⏳ قيد المراجعة</option>
+                    <option value="processing">🔄 قيد المعالجة</option>
+                    <option value="completed">✅ مقبول / مكتمل</option>
+                    <option value="failed">❌ مرفوض</option>
+                    <option value="cancelled">🚫 ملغي</option>
+                  </select>
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const sel = document.getElementById(`status-select-${order.id}`) as HTMLSelectElement;
+                      const newStatus = sel?.value;
+                      if (!newStatus) return;
+                      const res = await adminFetch(`/api/admin/orders/${order.id}/status`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ status: newStatus === "completed" ? "approved" : newStatus === "failed" ? "rejected" : newStatus, admin_response: "" })
+                      });
+                      const d = await res.json();
+                      if (d.error) alert(`خطأ: ${d.error}`);
+                      else { alert("✅ تم تحديث الحالة"); fetchAdminOrders(); }
+                    }}
+                    className="bg-[var(--brand)] text-white px-3 py-2 rounded-lg text-xs font-bold active:scale-95"
+                  >حفظ</button>
+                </div>
+              </div>
             </div>
           )}
         </div>
