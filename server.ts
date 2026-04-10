@@ -1625,7 +1625,7 @@ async function startServer() {
           const productData: any = {
             name: ap.name,
             price: finalPrice,
-            price_per_unit: finalPrice,
+            price_per_unit: parseFloat(basePrice.toFixed(6)), // سعر التكلفة من API
             description: ap.category_name || "",
             store_type: "external_api",
             requires_input: ap.params && ap.params.length > 0,
@@ -1641,8 +1641,8 @@ async function startServer() {
           if (existing) {
             const updateData: any = {
               name: productData.name,
-              price: productData.price,
-              price_per_unit: productData.price_per_unit,
+              price: productData.price, // سعر البيع
+              price_per_unit: productData.price_per_unit, // سعر التكلفة
               available: productData.available,
               min_quantity: productData.min_quantity,
               max_quantity: productData.max_quantity,
@@ -2626,17 +2626,22 @@ async function startServer() {
       for (const order of (acceptedOrders || [])) {
         for (const item of (order.order_items || [])) {
           const qty = Number(item.quantity) || 1;
-          const sellPrice = parseFloat(item.price_at_purchase ?? "0") || 0;
+          // price_at_purchase = سعر البيع الذي دفعه المستخدم
+          const sellPrice = parseFloat(String(item.price_at_purchase ?? "0")) || 0;
 
-          // سعر التكلفة: price_per_unit هو سعر API الفعلي
-          // إذا كان null أو 0 (منتجات غير API) → التكلفة = 0
+          // price_per_unit = سعر التكلفة (سعر API الأصلي)
+          // إذا كان 0 أو null → المنتج غير مرتبط بـ API → تكلفة = 0
           const rawCost = item.products?.price_per_unit;
-          const costPrice = (rawCost !== null && rawCost !== undefined && rawCost !== "")
-            ? (parseFloat(String(rawCost)) || 0)
+          const costPrice = (rawCost !== null && rawCost !== undefined && rawCost !== "" && parseFloat(String(rawCost)) > 0)
+            ? parseFloat(String(rawCost))
             : 0;
 
-          grossRevenue += sellPrice * qty;
-          apiCost += costPrice * qty;
+          const revenue = sellPrice * qty;
+          const cost = costPrice * qty;
+
+          grossRevenue += revenue;
+          // إذا لم يكن للمنتج سعر تكلفة محدد، نعتبر التكلفة = سعر البيع (ربح = 0) لعدم التضليل
+          apiCost += costPrice > 0 ? cost : revenue;
 
           if (costPrice > 0) ordersWithCost++;
           else ordersWithoutCost++;
@@ -2645,7 +2650,10 @@ async function startServer() {
 
       const totalPayments = (payments || []).reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
       const profit = grossRevenue - apiCost;
-      const profitMargin = grossRevenue > 0 ? (profit / grossRevenue) * 100 : 0;
+      // نسبة الربح الفعلية: (سعر البيع - سعر التكلفة) / سعر التكلفة × 100
+      const profitMargin = apiCost > 0 ? (profit / apiCost) * 100 : 0;
+      // هامش الربح الصافي: profit / grossRevenue × 100
+      const netMargin = grossRevenue > 0 ? (profit / grossRevenue) * 100 : 0;
 
       res.json({
         accepted_orders: (acceptedOrders || []).length,
@@ -2654,7 +2662,8 @@ async function startServer() {
         gross_revenue: grossRevenue,
         api_cost: apiCost,
         profit,
-        profit_margin: profitMargin,
+        profit_margin: profitMargin,  // نسبة الربح على التكلفة
+        net_margin: netMargin,        // هامش الربح الصافي
         orders_with_cost: ordersWithCost,
         orders_without_cost: ordersWithoutCost,
         from: fromIso,
@@ -2793,63 +2802,129 @@ async function startServer() {
       let finalStatus = status;
       let updatedMeta = { ...metaParsed };
 
-      // إذا كان الأدمن يوافق على طلب خارجي كان ينتظر
+      // =================== ADMIN MANUAL APPROVE — نفس منطق AUTO تماماً ===================
       if (status === 'approved' && order.status === 'pending_admin') {
         const product = order.order_items?.[0]?.products;
-        if (product?.store_type === 'external_api' && product?.external_id) {
-          if (!AHMINIX_TOKEN) {
-            return res.status(500).json({ error: "AHMINIX_API_TOKEN غير مضبوط" });
-          }
-          // الأولوية: override من الأدمن ← meta ← extra_data من order_items
-          const playerId = (
-            (override_player_id && String(override_player_id).trim()) ||
+
+        // --- نفس منطق استخراج playerId من AUTO flow ---
+        // الأولوية: override من الأدمن ← meta (extraData) ← extra_data من order_items
+        let playerId = "";
+        if (override_player_id && String(override_player_id).trim()) {
+          playerId = String(override_player_id).trim();
+        } else if (product?.requires_input) {
+          // منتج يتطلب player ID — نبحث في نفس الأماكن التي يبحث فيها AUTO
+          playerId = (
+            metaParsed?.playerId ||
+            metaParsed?.input ||
+            metaParsed?.userId ||
+            metaParsed?.gameId ||
+            metaParsed?.accountId ||
+            itemExtraParsed?.playerId ||
+            itemExtraParsed?.input ||
+            ""
+          ).toString().trim();
+        } else {
+          // منتج لا يتطلب input — نأخذ أي قيمة متاحة
+          playerId = (
             metaParsed?.playerId ||
             metaParsed?.input ||
             itemExtraParsed?.playerId ||
             itemExtraParsed?.input ||
             ""
           ).toString().trim();
-          const qty = order.order_items?.[0]?.quantity || 1;
-          const orderUuid = `vipronea-admin-${order.id}-${Date.now()}`;
+        }
 
-          console.log(`[API] Admin approved order #${order.id} | ext_id=${product.external_id} | qty=${qty} | playerId="${playerId}"`);
-          const apiRes = await ahminixCreateOrder(String(product.external_id), qty, playerId, orderUuid);
-          console.log(`[API] Ahminix response:`, JSON.stringify(apiRes));
+        const hasExtId = product?.external_id && String(product.external_id).trim() !== "";
 
-          // نرسل الطلب دائماً بغض النظر عن رد API
-          // إذا نجح → نحفظ بيانات Ahminix ونحدد الحالة
-          // إذا فشل → نسجل الخطأ في meta ونضع الطلب processing ليتابعه الأدمن
-          if (apiRes && apiRes.status === "OK") {
-            const ahminixRawStatus = apiRes.data?.status || "";
-            const mappedStatus = mapAhminixStatus(ahminixRawStatus);
-            updatedMeta = {
-              ...updatedMeta,
-              ahminix_order_id: apiRes.data?.order_id,
-              ahminix_status: ahminixRawStatus,
-              ahminix_replay: normalizeReplayApi(apiRes.data?.replay_api),
-              admin_approved_at: new Date().toISOString()
+        console.log(`[ADMIN APPROVE] order=#${order.id} | ext_id=${product?.external_id} | hasExtId=${hasExtId} | store_type=${product?.store_type} | requires_input=${product?.requires_input} | playerId="${playerId}" | TOKEN=${!!AHMINIX_TOKEN}`);
+
+        if (hasExtId) {
+          if (!AHMINIX_TOKEN) {
+            return res.status(500).json({ error: "AHMINIX_API_TOKEN غير مضبوط في .env" });
+          }
+
+          // --- نفس منطق qty و UUID من AUTO flow ---
+          const qty = Math.max(1, Number(order.order_items?.[0]?.quantity) || 1);
+          const orderUuid = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+            const r = Math.random() * 16 | 0;
+            return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+          });
+
+          console.log(`[ADMIN APPROVE] Sending to API: ext_id=${product.external_id} | qty=${qty} | playerId="${playerId}" | uuid=${orderUuid}`);
+
+          const apiRes = await ahminixCreateOrder(
+            String(product.external_id).trim(),
+            qty,
+            playerId,
+            orderUuid
+          );
+
+          console.log(`[ADMIN APPROVE] API response:`, JSON.stringify(apiRes));
+
+          // --- نفس منطق معالجة الرد من AUTO flow ---
+          if (!apiRes || apiRes.status !== "OK") {
+            // فشل API — نُرجع خطأ واضح للأدمن (نفس سلوك AUTO)
+            const errorCodes: Record<number, string> = {
+              120: "رمز API مطلوب",
+              121: "خطأ في رمز API — تحقق من AHMINIX_API_TOKEN",
+              122: "غير مسموح باستخدام API",
+              123: "عنوان IP غير مسموح به",
+              130: "الموقع قيد الصيانة",
+              100: "رصيد API غير كافٍ",
+              105: "الكمية غير متوفرة",
+              106: "الكمية غير مسموح بها",
+              112: "الكمية صغيرة جداً",
+              113: "الكمية كبيرة جداً",
+              114: "معلمة غير صالحة — تحقق من Player ID",
+              500: "خطأ غير معروف"
             };
-            finalStatus = mappedStatus === "completed" ? "completed" : "processing";
-          } else {
-            // فشل API لكن نكمل القبول — الطلب يصبح processing للمتابعة اليدوية
-            const errMsg = apiRes?.message || apiRes?.error || "لم يستجب API";
-            const errCode = Number(apiRes?.code || apiRes?.error_code || 0);
-            console.warn(`[API] Order #${order.id} API failed (code=${errCode}): ${errMsg} — marking as processing`);
+            const code = apiRes?.code || apiRes?.error_code;
+            const errMsg = (code && errorCodes[Number(code)]) || apiRes?.message || apiRes?.error || "فشل الطلب لدى المورد";
+            console.error(`[ADMIN APPROVE] API FAILED for order #${order.id}:`, JSON.stringify(apiRes));
+
+            // نحفظ الخطأ في meta ونضع الطلب في processing
+            // لا نوقف التنفيذ — نكمل لحفظ DB وإرسال الإشعار
             updatedMeta = {
               ...updatedMeta,
               admin_approved_at: new Date().toISOString(),
               api_send_attempted: true,
-              api_error_code: errCode,
+              api_error_code: Number(code || 0),
               api_error_msg: errMsg,
-              api_error_at: new Date().toISOString()
+              api_error_at: new Date().toISOString(),
+              last_api_error: errMsg
             };
             finalStatus = "processing";
+          } else {
+          // نجح API — نفس ما يفعله AUTO
+          const ahminixRawStatus = apiRes.data?.status || "";
+          const mappedStatus = normalizeOrderStatus(ahminixRawStatus);
+          const ahminixOrderId = String(apiRes.data?.order_id || orderUuid);
+          const ahminixReplay = normalizeReplayApi(apiRes.data?.replay_api);
+
+          updatedMeta = {
+            ...updatedMeta,
+            order_mode: "manual_approved",
+            ahminix_order_id: ahminixOrderId,
+            ahminix_order_uuid: orderUuid,
+            ahminix_status: ahminixRawStatus,
+            ahminix_replay: ahminixReplay,
+            admin_approved_at: new Date().toISOString()
+          };
+
+          // نفس منطق تحديد الحالة النهائية من AUTO
+          finalStatus = mappedStatus === "completed" ? "completed" : "processing";
+
+          console.log(`[ADMIN APPROVE] SUCCESS: ahminix_id=${ahminixOrderId} | status=${ahminixRawStatus} → ${finalStatus}`);
           }
+
         } else {
-          // منتج عادي تمت الموافقة عليه
-          finalStatus = 'completed';
+          // منتج بدون external_id (لا يتصل بـ API) — اعتباره مكتمل مباشرة
+          finalStatus = "completed";
+          updatedMeta = { ...updatedMeta, admin_approved_at: new Date().toISOString() };
+          console.log(`[ADMIN APPROVE] No external_id — marking as completed directly`);
         }
       }
+      // ==================================================================================
 
       // إذا كان الأدمن يرفض طلب
       if (status === 'rejected') {
@@ -2862,9 +2937,10 @@ async function startServer() {
         }
       }
 
+      // حفظ الحالة النهائية و meta المحدّثة في DB دائماً
       const { error: oErr } = await supabase.from("orders").update({
         status: finalStatus,
-        admin_response: responseText,
+        admin_response: responseText || null,
         meta: JSON.stringify(updatedMeta)
       }).eq("id", req.params.id);
       if (oErr) throw oErr;
