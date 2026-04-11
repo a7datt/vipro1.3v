@@ -828,17 +828,25 @@ export default function App() {
   const handleUnlinkTelegram = async () => {
     if (!user) return;
     try {
+      const token = localStorage.getItem("authToken") || "";
       const res = await fetch("/api/user/unlink-telegram", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({ userId: user.id })
       });
       if (res.ok) {
         fetchUser(user.id);
-        showToast("تم فك الارتباط بنجاح. لقد تم تسجيل خروجك من بوت تليجرام أيضاً.", 'success');
+        showToast("تم فك الارتباط بنجاح.", 'success');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || "فشل فك الارتباط، حاول مجدداً", 'error');
       }
     } catch (e) {
       console.error(e);
+      showToast("فشل الاتصال بالخادم", 'error');
     }
   };
 
@@ -2778,11 +2786,25 @@ export default function App() {
             ) : (
               /* --- Manual verify UI (existing) --- */
               <>
-                <div className="bg-brand-light p-4 rounded-xl border border-brand-soft text-center">
-                  <p className="text-brand text-sm mb-1">رقم المحفظة / العنوان</p>
-                  <p className="text-2xl font-bold text-brand tracking-wider">{selectedMethod.wallet_address}</p>
+                <div className="bg-brand-light p-4 rounded-xl border border-brand-soft text-center space-y-2">
+                  <p className="text-brand text-xs font-semibold mb-1">رقم المحفظة / العنوان</p>
+                  <div className="flex items-center justify-center gap-2 flex-wrap">
+                    <p className="text-sm font-bold text-brand tracking-wider break-all">{selectedMethod.wallet_address}</p>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(selectedMethod.wallet_address).then(() => showToast("تم نسخ عنوان المحفظة!", 'success')).catch(() => showToast("فشل النسخ", 'error'));
+                      }}
+                      className="flex items-center gap-1 bg-brand text-white text-[10px] font-bold px-2 py-1 rounded-lg shrink-0"
+                    >
+                      <Copy size={11} /> نسخ
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-brand/70 font-medium">طريقة الدفع: {selectedMethod.name}</p>
+                  {selectedMethod.description && (
+                    <p className="text-xs text-brand/60 font-light mt-1">{selectedMethod.description}</p>
+                  )}
                   {selectedMethod.min_amount > 0 && (
-                    <p className="text-xs text-brand mt-2 font-bold">أقل مبلغ: {selectedMethod.min_amount} $</p>
+                    <p className="text-xs text-brand mt-1 font-bold">أقل مبلغ: {selectedMethod.min_amount} $</p>
                   )}
                 </div>
                 <div className="space-y-4">
@@ -6647,7 +6669,7 @@ const AdminElementsTab = ({categories, subcategories, subSubCategories, fetchCat
                 <div className="flex items-center gap-2"><input type="checkbox" checked={!!editingItem.requires_input} onChange={e => setEditingItem({...editingItem,requires_input:e.target.checked})} className="w-4 h-4 rounded"/><label className="text-xs font-bold text-gray-600">يتطلب بيانات إضافية</label></div>
               </div>
             )}
-            {editingType === "paymentMethods" && <div className="space-y-3"><input type="text" placeholder="اسم طريقة الدفع" className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none" value={editingItem.name||""} onChange={e => setEditingItem({...editingItem,name:e.target.value})}/><AdminImageUpload label="صورة الطريقة" currentUrl={editingItem.image_url||""} onUpload={url => setEditingItem({...editingItem,image_url:url})}/><input type="text" placeholder="رقم المحفظة" className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none" value={editingItem.wallet_address||""} onChange={e => setEditingItem({...editingItem,wallet_address:e.target.value})}/><input type="number" placeholder="أقل مبلغ $" className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none" value={editingItem.min_amount||""} onChange={e => setEditingItem({...editingItem,min_amount:e.target.value})}/></div>}
+            {editingType === "paymentMethods" && <div className="space-y-3"><input type="text" placeholder="اسم طريقة الدفع" className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none" value={editingItem.name||""} onChange={e => setEditingItem({...editingItem,name:e.target.value})}/><AdminImageUpload label="صورة الطريقة" currentUrl={editingItem.image_url||""} onUpload={url => setEditingItem({...editingItem,image_url:url})}/><input type="text" placeholder="رقم المحفظة" className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none" value={editingItem.wallet_address||""} onChange={e => setEditingItem({...editingItem,wallet_address:e.target.value})}/><textarea placeholder="وصف طريقة الدفع (اختياري)" className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none h-16 resize-none" value={editingItem.description||""} onChange={e => setEditingItem({...editingItem,description:e.target.value})}/><input type="number" placeholder="أقل مبلغ $" className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none" value={editingItem.min_amount||""} onChange={e => setEditingItem({...editingItem,min_amount:e.target.value})}/></div>}
             {editingType === "banners" && <div className="space-y-3"><AdminImageUpload label="صورة البانر" currentUrl={editingItem.image_url||""} onUpload={url => setEditingItem({...editingItem,image_url:url})}/></div>}
             {editingType === "offers" && <div className="space-y-3"><input type="text" placeholder="عنوان العرض" className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none" value={editingItem.title||""} onChange={e => setEditingItem({...editingItem,title:e.target.value})} autoFocus/><textarea placeholder="وصف العرض" className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none h-20 resize-none" value={editingItem.description||""} onChange={e => setEditingItem({...editingItem,description:e.target.value})}/><AdminImageUpload label="صورة العرض" currentUrl={editingItem.image_url||""} onUpload={url => setEditingItem({...editingItem,image_url:url})}/></div>}
             {editingType === "vouchers" && <div className="space-y-3"><input type="text" placeholder="الكود" className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none" value={editingItem.code||""} onChange={e => setEditingItem({...editingItem,code:e.target.value})}/><input type="number" placeholder="القيمة $" className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none" value={editingItem.amount||""} onChange={e => setEditingItem({...editingItem,amount:e.target.value})}/><input type="number" placeholder="أقصى استخدامات" className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none" value={editingItem.max_uses||""} onChange={e => setEditingItem({...editingItem,max_uses:e.target.value})}/></div>}
@@ -6718,7 +6740,7 @@ const AdminPanel = ({
       price_per_unit: "",
       external_id: ""
     });
-    const [newPaymentMethod, setNewPaymentMethod] = useState({ name: "", image_url: "", wallet_address: "", min_amount: "", instructions: "", method_type: "manual", api_account: "" });
+    const [newPaymentMethod, setNewPaymentMethod] = useState({ name: "", image_url: "", wallet_address: "", min_amount: "", instructions: "", description: "", method_type: "manual", api_account: "" });
     const [newBanner, setNewBanner] = useState({ image_url: "" });
     const [manualTopup, setManualTopup] = useState({ userId: "", amount: "" });
     const [settings, setSettings] = useState<any[]>([]);
@@ -7112,7 +7134,7 @@ const AdminPanel = ({
         body: JSON.stringify(newPaymentMethod)
       });
       if (res.ok) {
-        setNewPaymentMethod({ name: "", image_url: "", wallet_address: "", min_amount: "", instructions: "" });
+        setNewPaymentMethod({ name: "", image_url: "", wallet_address: "", min_amount: "", instructions: "", description: "", method_type: "manual", api_account: "" });
         fetchPaymentMethods();
         showToast("تمت إضافة طريقة الدفع", 'info');
       } else {
@@ -7373,6 +7395,7 @@ const AdminPanel = ({
                     <AdminImageUpload label="صورة الطريقة" currentUrl={newPaymentMethod.image_url} onUpload={url => setNewPaymentMethod({...newPaymentMethod,image_url:url})}/>
                     <select className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none" value={newPaymentMethod.method_type} onChange={e => setNewPaymentMethod({...newPaymentMethod,method_type:e.target.value,api_account:""})}><option value="manual">يدوي (إيصال)</option><option value="syriatel">سيريتل كاش</option><option value="shamcash">شام كاش</option></select>
                     <input type="text" placeholder="رقم المحفظة / العنوان" className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none" value={newPaymentMethod.wallet_address} onChange={e => setNewPaymentMethod({...newPaymentMethod,wallet_address:e.target.value})}/>
+                    <textarea placeholder="وصف طريقة الدفع (اختياري - يظهر للمستخدم)" className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none h-16 resize-none" value={newPaymentMethod.description} onChange={e => setNewPaymentMethod({...newPaymentMethod,description:e.target.value})}/>
                     {(newPaymentMethod.method_type==="syriatel"||newPaymentMethod.method_type==="shamcash") && <input type="text" placeholder={newPaymentMethod.method_type==="syriatel"?"رقم GSM (0933xxxxxx)":"عنوان الحساب"} className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none font-mono" value={newPaymentMethod.api_account} onChange={e => setNewPaymentMethod({...newPaymentMethod,api_account:e.target.value})}/>}
                     <input type="number" placeholder="أقل مبلغ $" className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none" value={newPaymentMethod.min_amount} onChange={e => setNewPaymentMethod({...newPaymentMethod,min_amount:e.target.value})}/>
                     <button onClick={() => { handleAddPaymentMethod(); setActiveSubMenu(null); }} className="w-full bg-[var(--brand)] text-white py-3.5 rounded-2xl font-bold text-sm">إضافة طريقة الدفع</button>

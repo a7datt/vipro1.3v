@@ -93,6 +93,7 @@ export interface PaymentMethod {
   name: string;
   wallet_address: string;
   instructions: string;
+  description?: string;
   image_url: string;
   min_amount: number;
   method_type?: 'manual' | 'syriatel' | 'shamcash';
