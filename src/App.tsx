@@ -460,7 +460,8 @@ interface WalletChargeViewProps {
   fetchTransactions: () => void;
 }
 
-const WalletChargeView: React.FC<WalletChargeViewProps> = ({
+// React.memo يمنع إعادة رسم المكوّن عند أي تحديث خارجي لا يخصه
+const WalletChargeView: React.FC<WalletChargeViewProps> = React.memo(({
   user, paymentMethods, showToast, setView, fetchUser, fetchTransactions,
 }) => {
   const [selectedMethod, setSelectedMethodState] = React.useState<PaymentMethod | null>(null);
@@ -666,7 +667,15 @@ const WalletChargeView: React.FC<WalletChargeViewProps> = ({
       </div>
     </div>
   );
-};
+// إغلاق React.memo
+}, (prevProps, nextProps) => {
+  // نعيد الرسم فقط عند تغيير paymentMethods أو user.id أو user.balance
+  // هذا يمنع إعادة رسم المكوّن عند تحديث بيانات المستخدم الأخرى
+  if (prevProps.paymentMethods !== nextProps.paymentMethods) return false;
+  if (prevProps.user?.id !== nextProps.user?.id) return false;
+  if (prevProps.user?.balance !== nextProps.user?.balance) return false;
+  return true;
+});
 // ===================== END WALLET CHARGE VIEW =====================
 
 export default function App() {
@@ -901,10 +910,9 @@ export default function App() {
       supabase.channel('banners-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'banners' }, fetchBanners).subscribe(),
       supabase.channel('offers-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'offers' }, fetchOffers).subscribe(),
       supabase.channel('settings-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, () => {
-        // لا نعيد تحميل الصفحة إذا كان المستخدم في لوحة التحكم
-        if (!document.querySelector('[data-admin-panel]')) {
-          window.location.reload();
-        }
+        // لا نعيد تحميل الصفحة أبداً - نكتفي بتحديث الإعدادات بهدوء
+        // window.location.reload() محذوف نهائياً لأنه يُخرج المستخدم من صفحة الدفع
+        fetchSiteSettings();
       }).subscribe(),
     ];
 
@@ -1255,7 +1263,7 @@ export default function App() {
   // Helper: يجيب الـ auth token من localStorage
   const getAuthToken = (): string => localStorage.getItem("authToken") || "";
 
-  const fetchUser = async (id: number) => {
+  const fetchUser = useCallback(async (id: number) => {
     if (!id || isNaN(id)) return;
     try {
       const token = getAuthToken();
@@ -1302,7 +1310,7 @@ export default function App() {
       }
       console.error("Fetch user error:", e);
     }
-  };
+  }, []);
 
   const handleRedeemVoucher = async () => {
     if (!user || !voucherCode) return;
@@ -1482,7 +1490,7 @@ export default function App() {
     }
   };
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
     if (!user) return;
     try {
       const token = localStorage.getItem("authToken") || "";
@@ -1500,7 +1508,7 @@ export default function App() {
       if (e.name === 'TypeError' && e.message === 'Failed to fetch') return;
       console.error("Fetch transactions error:", e);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     if (activeTab === "orders" && orders.length === 0) fetchOrders();
@@ -3342,15 +3350,10 @@ export default function App() {
           </div>
         </div>
 
-        {/* الاسم */}
+        {/* الاسم + الشارة بجانب بعض */}
         {user?.name && (
-          <p className="text-base font-semibold text-gray-400 text-center -mt-1">{user.name}</p>
-        )}
-
-        {/* رقم الدخول مع الشارة */}
-        {user?.id && (
-          <div className="flex items-center justify-center gap-2">
-            <span className="text-lg font-bold text-brand">#{user.id}</span>
+          <div className="flex items-center justify-center gap-2 -mt-1 flex-wrap">
+            <p className="text-base font-semibold text-gray-800">{user.name}</p>
             {user?.stats?.profile_badge && (
               <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold badge-${user.stats.profile_badge} inline-flex items-center gap-1`}>
                 {user.stats.profile_badge === 'bronze' && <Award size={10} />}
@@ -3366,11 +3369,16 @@ export default function App() {
           </div>
         )}
 
-        {/* اللقب */}
-        {user?.stats?.user_title && (
-          <p className="text-xs font-bold text-purple-600 flex items-center justify-center gap-1">
-            <Award size={11} /> {user.stats.user_title}
-          </p>
+        {/* رقم الدخول + اللقب بجانب بعض */}
+        {user?.id && (
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <span className="text-sm font-bold text-brand">#{user.id}</span>
+            {user?.stats?.user_title && (
+              <span className="text-xs font-bold text-purple-600 flex items-center gap-1">
+                <Award size={11} /> {user.stats.user_title}
+              </span>
+            )}
+          </div>
         )}
 
         {/* 3 أزرار: ربط تليجرام / الإحالة / دفعاتي */}
@@ -3410,14 +3418,8 @@ export default function App() {
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50 overflow-hidden">
           <ProfileItem icon={<UserCircle size={20} />} label="معلومات الحساب" onClick={() => setView({ type: "profile_details" })} />
           <ProfileItem icon={<User size={20} />} label="تعديل الملف الشخصي" onClick={() => setView({ type: "edit_profile" })} />
-          {!!user?.stats?.has_special_support && (
-            <ProfileItem icon={<ShieldCheck size={20} />} label="الدعم الخاص (الأولوية)" className="text-amber-600 bg-amber-50/50" onClick={() => showToast("لديك أولوية في الدعم الفني. تواصل معنا عبر الواتساب.", 'info')} />
-          )}
           <ProfileItem icon={<Settings size={20} />} label="الإعدادات" onClick={() => setView({ type: "settings" })} />
           <ProfileItem icon={<Headphones size={20} />} label="الدعم الفني" onClick={() => setView({ type: "chat" })} className="text-brand relative" badge={user?.unread_support_count > 0 ? user.unread_support_count : undefined} />
-          {!!user?.stats?.custom_theme_color && (
-            <ProfileItem icon={<Palette size={20} />} label="تخصيص الثيم" onClick={() => setThemeModal({ isOpen: true, color: user.stats.custom_theme_color === 'any' ? '#10b981' : user.stats.custom_theme_color })} className="text-brand" />
-          )}
           {user ? (
             <ProfileItem icon={<LogOut size={20} />} label="تسجيل الخروج" onClick={handleLogout} className="text-red-500" />
           ) : (
@@ -4827,7 +4829,28 @@ export default function App() {
     useEffect(() => {
       fetchMessages();
       fetchFaqs();
-      const interval = setInterval(fetchMessages, 30000);
+      // تحديث ذكي: نتحقق فقط من وجود رسائل جديدة بشكل خفيف كل 8 ثواني
+      // وإذا وجدنا جديداً نحدث، وإلا نتجاهل بدون إعادة رسم
+      const interval = setInterval(async () => {
+        try {
+          const token = localStorage.getItem("authToken") || "";
+          const guestId = localStorage.getItem("guest_id") || "";
+          const url = user
+            ? `/api/chat/messages?user_id=${user.id}`
+            : `/api/chat/messages?guest_id=${guestId}`;
+          const res = await fetch(url, {
+            headers: user && token ? { Authorization: `Bearer ${token}` } : {}
+          });
+          if (!res.ok) return;
+          const raw = await res.json();
+          const data = Array.isArray(raw) ? raw : [];
+          // نحدث الحالة فقط إذا كان هناك رسائل جديدة فعلاً
+          setMessages(prev => {
+            if (prev.length === data.length && prev.every((m, i) => m.id === data[i]?.id)) return prev;
+            return data;
+          });
+        } catch {}
+      }, 8000);
       return () => clearInterval(interval);
     }, []);
 
@@ -4937,8 +4960,8 @@ export default function App() {
     };
 
     return (
-      <div className="fixed inset-0 z-[60] bg-gray-50 flex flex-col bottom-16">
-        <div className="bg-white p-4 border-b border-gray-100 flex items-center gap-3 shadow-sm">
+      <div className="fixed inset-0 z-[60] bg-gray-50 flex flex-col" style={{top:0, bottom:'64px'}}>
+        <div className="bg-white p-4 border-b border-gray-100 flex items-center gap-3 shadow-sm shrink-0">
           <button onClick={() => setView({ type: "main" })} className="p-2 bg-gray-50 rounded-full hover:bg-gray-100 transition-colors">
             <ArrowRight size={20} className="text-gray-600" />
           </button>
@@ -5019,7 +5042,7 @@ export default function App() {
           </AnimatePresence>
         </div>
 
-        <div className="p-4 bg-white border-t border-gray-100 flex items-center gap-2 shrink-0">
+        <div className="relative p-4 bg-white border-t border-gray-100 flex items-center gap-2 shrink-0 mt-auto">
           {/* FAQ Panel */}
           {showFaqs && faqs.length > 0 && (
             <div className="absolute bottom-full left-4 right-4 mb-2 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50">
