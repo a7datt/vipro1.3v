@@ -1544,7 +1544,8 @@ export default function App() {
                           setPageLoading(false);
                         } else if (fav._fav_type === "sub_sub_category") {
                           setPageLoading(true);
-                          setView({ type: "products", id: fav.id, data: fav.name, catId: fav.category_id, subId: fav.subcategory_id });
+                          await fetchProducts(fav.id, true);
+                          setView({ type: "products", id: fav.id, data: fav.name, fromSubSub: true, catId: fav.category_id, subId: fav.subcategory_id });
                           setPageLoading(false);
                         }
                       }}
