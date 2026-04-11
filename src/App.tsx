@@ -450,16 +450,8 @@ const CustomDialogContainer = () => {
 };
 // ===================== END CUSTOM DIALOG SYSTEM =====================
 
-// ===================== WALLET CHARGE VIEW (مستقل عن App لمنع إعادة mount) =====================
+// ===================== WALLET CHARGE VIEW (كل الـ state داخله لمنع إغلاق الكيبورد) =====================
 interface WalletChargeViewProps {
-  selectedPaymentMethod: PaymentMethod | null;
-  setSelectedPaymentMethod: (m: PaymentMethod | null) => void;
-  walletAmount: string; setWalletAmount: (v: string) => void;
-  walletNote: string; setWalletNote: (v: string) => void;
-  walletReceiptUrl: string; setWalletReceiptUrl: (v: string) => void;
-  walletUploading: boolean; setWalletUploading: (v: boolean) => void;
-  walletTxNumber: string; setWalletTxNumber: (v: string) => void;
-  walletLoading: boolean; setWalletLoading: (v: boolean) => void;
   user: any;
   paymentMethods: PaymentMethod[];
   showToast: (msg: string, type: 'success'|'error'|'info') => void;
@@ -469,18 +461,18 @@ interface WalletChargeViewProps {
 }
 
 const WalletChargeView: React.FC<WalletChargeViewProps> = ({
-  selectedPaymentMethod, setSelectedPaymentMethod,
-  walletAmount, setWalletAmount,
-  walletNote, setWalletNote,
-  walletReceiptUrl, setWalletReceiptUrl,
-  walletUploading, setWalletUploading,
-  walletTxNumber, setWalletTxNumber,
-  walletLoading, setWalletLoading,
   user, paymentMethods, showToast, setView, fetchUser, fetchTransactions,
 }) => {
-  const selectedMethod = selectedPaymentMethod;
+  const [selectedMethod, setSelectedMethodState] = React.useState<PaymentMethod | null>(null);
+  const [walletAmount, setWalletAmount] = React.useState("");
+  const [walletNote, setWalletNote] = React.useState("");
+  const [walletReceiptUrl, setWalletReceiptUrl] = React.useState("");
+  const [walletUploading, setWalletUploading] = React.useState(false);
+  const [walletTxNumber, setWalletTxNumber] = React.useState("");
+  const [walletLoading, setWalletLoading] = React.useState(false);
+
   const setSelectedMethod = (m: PaymentMethod | null) => {
-    setSelectedPaymentMethod(m);
+    setSelectedMethodState(m);
     if (!m) {
       setWalletAmount(""); setWalletNote(""); setWalletReceiptUrl(""); setWalletTxNumber("");
     }
@@ -689,7 +681,6 @@ export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [checkoutQuantity, setCheckoutQuantity] = useState<number>(0);
   const [checkoutOrderResult, setCheckoutOrderResult] = useState<any>(null);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
@@ -709,12 +700,7 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(localStorage.getItem("theme") === "dark");
   const [voucherCode, setVoucherCode] = useState("");
   // ── Wallet charge form states (رُفعت هنا لمنع ضياع البيانات عند إعادة الرسم) ──
-  const [walletAmount, setWalletAmount] = useState("");
-  const [walletNote, setWalletNote] = useState("");
-  const [walletReceiptUrl, setWalletReceiptUrl] = useState("");
-  const [walletUploading, setWalletUploading] = useState(false);
-  const [walletTxNumber, setWalletTxNumber] = useState("");
-  const [walletLoading, setWalletLoading] = useState(false);
+  // wallet state moved inside WalletChargeView for keyboard stability
   const [isBlocked, setIsBlocked] = useState(false);
   const [blockCountdown, setBlockCountdown] = useState(0);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -3044,14 +3030,6 @@ export default function App() {
 
   const WalletView = () => (
     <WalletChargeView
-      selectedPaymentMethod={selectedPaymentMethod}
-      setSelectedPaymentMethod={setSelectedPaymentMethod}
-      walletAmount={walletAmount} setWalletAmount={setWalletAmount}
-      walletNote={walletNote} setWalletNote={setWalletNote}
-      walletReceiptUrl={walletReceiptUrl} setWalletReceiptUrl={setWalletReceiptUrl}
-      walletUploading={walletUploading} setWalletUploading={setWalletUploading}
-      walletTxNumber={walletTxNumber} setWalletTxNumber={setWalletTxNumber}
-      walletLoading={walletLoading} setWalletLoading={setWalletLoading}
       user={user}
       paymentMethods={paymentMethods}
       showToast={showToast}
@@ -3364,16 +3342,10 @@ export default function App() {
           </div>
         </div>
 
-        {/* زر معلومات الحساب (أيقونة شخص) */}
-        <div className="flex justify-center -mt-2">
-          <button
-            onClick={() => setView({ type: "profile_details" })}
-            className="p-2 bg-gray-100 hover:bg-brand-light text-gray-500 hover:text-brand rounded-xl transition-all active:scale-90"
-            title="معلومات الحساب التفصيلية"
-          >
-            <UserCircle size={20} />
-          </button>
-        </div>
+        {/* الاسم */}
+        {user?.name && (
+          <p className="text-base font-semibold text-gray-400 text-center -mt-1">{user.name}</p>
+        )}
 
         {/* رقم الدخول مع الشارة */}
         {user?.id && (
@@ -3436,6 +3408,7 @@ export default function App() {
 
         {/* قائمة الإجراءات */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50 overflow-hidden">
+          <ProfileItem icon={<UserCircle size={20} />} label="معلومات الحساب" onClick={() => setView({ type: "profile_details" })} />
           <ProfileItem icon={<User size={20} />} label="تعديل الملف الشخصي" onClick={() => setView({ type: "edit_profile" })} />
           {!!user?.stats?.has_special_support && (
             <ProfileItem icon={<ShieldCheck size={20} />} label="الدعم الخاص (الأولوية)" className="text-amber-600 bg-amber-50/50" onClick={() => showToast("لديك أولوية في الدعم الفني. تواصل معنا عبر الواتساب.", 'info')} />
@@ -4120,10 +4093,6 @@ export default function App() {
           <div className="bg-brand-light p-4 rounded-2xl border border-brand-soft">
             <p className="text-[10px] text-brand font-bold uppercase tracking-wider mb-1">رقم الدخول</p>
             <p className="text-lg font-bold text-brand">#{user?.id || "—"}</p>
-          </div>
-          <div className="bg-purple-50 p-4 rounded-2xl border border-purple-100">
-            <p className="text-[10px] text-purple-600 font-bold uppercase tracking-wider mb-1">رقم الدخول</p>
-            <p className="text-lg font-bold text-purple-700">#{user?.id || "—"}</p>
           </div>
           <div className={`${theme.bgLight} p-4 rounded-2xl border ${theme.border}`}>
             <p className={`text-[10px] ${theme.text} font-bold uppercase tracking-wider mb-1`}>الرصيد</p>
