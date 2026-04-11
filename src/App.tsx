@@ -365,6 +365,90 @@ const ToastContainer = () => {
 };
 // ===================== END TOAST SYSTEM =====================
 
+// ===================== CUSTOM DIALOG SYSTEM =====================
+interface DialogConfig {
+  type: 'confirm' | 'prompt';
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  inputLabel?: string;
+  inputDefault?: string;
+  inputPlaceholder?: string;
+  onConfirm: (value?: string) => void;
+  onCancel?: () => void;
+  danger?: boolean;
+}
+let globalShowDialog: ((cfg: DialogConfig) => void) | null = null;
+
+export function showDialog(cfg: DialogConfig) {
+  if (globalShowDialog) globalShowDialog(cfg);
+}
+
+export function showConfirm(message: string, title: string, onConfirm: () => void, danger = false) {
+  showDialog({ type: 'confirm', title, message, confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm, danger });
+}
+
+export function showPromptDialog(message: string, title: string, onConfirm: (val: string) => void, inputDefault = '', inputPlaceholder = '') {
+  showDialog({ type: 'prompt', title, message, confirmText: 'تأكيد', cancelText: 'إلغاء', inputDefault, inputPlaceholder, onConfirm });
+}
+
+const CustomDialogContainer = () => {
+  const [dialog, setDialog] = useState<DialogConfig | null>(null);
+  const [inputValue, setInputValue] = useState('');
+  useEffect(() => {
+    globalShowDialog = (cfg) => {
+      setInputValue(cfg.inputDefault || '');
+      setDialog(cfg);
+    };
+    return () => { globalShowDialog = null; };
+  }, []);
+  if (!dialog) return null;
+  const handleConfirm = () => {
+    dialog.onConfirm(dialog.type === 'prompt' ? inputValue : undefined);
+    setDialog(null);
+  };
+  const handleCancel = () => {
+    if (dialog.onCancel) dialog.onCancel();
+    setDialog(null);
+  };
+  return (
+    <div className="fixed inset-0 z-[9998] flex items-end justify-center" style={{backdropFilter:'blur(2px)',WebkitBackdropFilter:'blur(2px)',background:'rgba(0,0,0,0.35)'}}>
+      <div className="bg-white w-full max-w-sm rounded-t-3xl shadow-2xl p-6 space-y-4 animate-slideUp" style={{animation:'slideUpDialog 0.25s ease'}}>
+        <div className="flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-lg flex-shrink-0 ${dialog.danger ? 'bg-red-100' : 'bg-brand-light'}`}>
+            {dialog.danger ? '⚠️' : dialog.type === 'prompt' ? '✏️' : '❓'}
+          </div>
+          <div>
+            <h3 className={`font-bold text-base ${dialog.danger ? 'text-red-700' : 'text-gray-800'}`}>{dialog.title}</h3>
+            <p className="text-gray-500 text-sm leading-snug">{dialog.message}</p>
+          </div>
+        </div>
+        {dialog.type === 'prompt' && (
+          <input
+            autoFocus
+            type="text"
+            value={inputValue}
+            onChange={e => setInputValue(e.target.value)}
+            placeholder={dialog.inputPlaceholder || ''}
+            className="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm outline-none focus:border-brand shadow-sm"
+            onKeyDown={e => { if (e.key === 'Enter') handleConfirm(); }}
+          />
+        )}
+        <div className="flex gap-3">
+          <button onClick={handleCancel} className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-2xl font-bold text-sm">
+            {dialog.cancelText || 'إلغاء'}
+          </button>
+          <button onClick={handleConfirm} className={`flex-1 py-3 rounded-2xl font-bold text-sm text-white ${dialog.danger ? 'bg-red-500' : 'bg-brand'}`}>
+            {dialog.confirmText || 'تأكيد'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+// ===================== END CUSTOM DIALOG SYSTEM =====================
+
 export default function App() {
   const [activeTab, setActiveTab] = useState("home");
   const [user, setUser] = useState<UserData | null>(null);
@@ -415,6 +499,9 @@ export default function App() {
   });
   const [longPressTarget, setLongPressTarget] = useState<any | null>(null);
   const [longPressPos, setLongPressPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // ===== CUSTOM DIALOG STATE =====
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   // ===== PULL TO REFRESH =====
   const pullStartY = useRef(0);
@@ -1268,8 +1355,12 @@ export default function App() {
         )}
         <button onClick={() => setNotificationsOpen(true)} className="p-2 hover:bg-gray-50 rounded-full relative">
           <Bell size={22} className="text-gray-600" />
-          {(Array.isArray(notifications) ? notifications : []).some(n => !n.is_read) && (
-            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+          {(Array.isArray(notifications) ? notifications : []).filter(n => !n.is_read).length > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-red-500 rounded-full border-2 border-white flex items-center justify-center">
+              <span className="text-white text-[9px] font-bold leading-none px-0.5">
+                {(Array.isArray(notifications) ? notifications : []).filter(n => !n.is_read).length > 9 ? "9+" : (Array.isArray(notifications) ? notifications : []).filter(n => !n.is_read).length}
+              </span>
+            </span>
           )}
         </button>
       </div>
@@ -1295,9 +1386,31 @@ export default function App() {
           >
             <div className="p-6 border-b border-gray-100 flex items-center justify-between">
               <h3 className="font-bold text-lg text-gray-800">الإشعارات</h3>
-              <button onClick={() => setNotificationsOpen(false)} className="p-2 bg-gray-100 rounded-full">
-                <XCircle size={20} className="text-gray-400" />
-              </button>
+              <div className="flex items-center gap-2">
+                {(Array.isArray(notifications) ? notifications : []).some(n => !n.is_read) && (
+                  <button
+                    onClick={async () => {
+                      const unread = (Array.isArray(notifications) ? notifications : []).filter(n => !n.is_read);
+                      for (const n of unread) {
+                        if (typeof n.id !== 'string') {
+                          await fetch("/api/notifications/mark-read", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ notificationId: n.id })
+                          });
+                        }
+                      }
+                      fetchNotifications();
+                    }}
+                    className="text-xs font-bold text-brand bg-brand-light px-3 py-1.5 rounded-full"
+                  >
+                    تمييز الكل كمقروء
+                  </button>
+                )}
+                <button onClick={() => setNotificationsOpen(false)} className="p-2 bg-gray-100 rounded-full">
+                  <XCircle size={20} className="text-gray-400" />
+                </button>
+              </div>
             </div>
             
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -1305,8 +1418,7 @@ export default function App() {
                 (Array.isArray(notifications) ? notifications : []).map(notif => (
                   <div 
                     key={notif.id} 
-                    onClick={() => markNotificationRead(notif.id)}
-                    className={`p-4 rounded-2xl border transition-all ${notif.is_read ? 'opacity-60' : 'shadow-sm'} ${
+                    className={`p-4 rounded-2xl border transition-all cursor-pointer ${notif.is_read ? 'opacity-60' : 'shadow-sm'} ${
                       notif.type === 'warning' ? 'bg-amber-50 border-amber-100' : 
                       notif.type === 'success' ? 'bg-brand-light border-brand-soft' : 'bg-blue-50 border-blue-100'
                     }`}
@@ -1316,7 +1428,20 @@ export default function App() {
                         notif.type === 'warning' ? 'text-amber-800' : 
                         notif.type === 'success' ? 'text-brand' : 'text-blue-800'
                       }`}>{notif.title}</h4>
-                      {notif.created_at && <span className="text-[9px] text-gray-400">{new Date(notif.created_at).toLocaleTimeString("ar-EG")}</span>}
+                      <div className="flex items-center gap-1.5 flex-shrink-0 mr-2">
+                        {notif.created_at && <span className="text-[9px] text-gray-400">{new Date(notif.created_at).toLocaleTimeString("ar-EG")}</span>}
+                        {!notif.is_read && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); markNotificationRead(notif.id); }}
+                            className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                              notif.type === 'warning' ? 'bg-amber-200 text-amber-800' :
+                              notif.type === 'success' ? 'bg-brand text-white' : 'bg-blue-200 text-blue-800'
+                            }`}
+                          >
+                            ✓ مقروء
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <p className={`text-sm leading-relaxed ${
                       notif.type === 'warning' ? 'text-amber-700' : 
@@ -1730,7 +1855,16 @@ export default function App() {
               <motion.div
                 whileTap={{ scale: 0.95 }}
                 key={prod.id}
-                className="bg-white rounded-xl border border-gray-100 shadow-sm flex flex-col items-center overflow-hidden"
+                onClick={() => {
+                  if (!user) return setView({ type: "login" });
+                  if (prod.store_type === 'quick_order') {
+                    setView({ type: "quick_order", data: prod });
+                  } else {
+                    setCheckoutQuantity(parseInt(String(prod.min_quantity)) || 0);
+                    setView({ type: "checkout", data: prod });
+                  }
+                }}
+                className="bg-white rounded-xl border border-gray-100 shadow-sm flex flex-col items-center overflow-hidden cursor-pointer"
               >
                 <div className="w-full aspect-square overflow-hidden bg-gray-50">
                   <img
@@ -1878,7 +2012,14 @@ export default function App() {
   const SubcategoriesView = () => (
     <div className="px-4 space-y-4 pb-20">
       <div className="flex items-center gap-2 mb-6">
-        <button onClick={() => setView({ type: "main" })} className="p-2 bg-gray-100 rounded-full">
+        <button onClick={() => {
+          if (view.fromFav) {
+            setView({ type: "main" });
+            setHomeSortMode("favorites");
+          } else {
+            setView({ type: "main" });
+          }
+        }} className="p-2 bg-gray-100 rounded-full">
           <ArrowRight size={20} className="text-gray-600" />
         </button>
         <h2 className="text-xl font-bold text-gray-800">{view.data}</h2>
@@ -4911,18 +5052,24 @@ export default function App() {
     };
 
     const handleToggleBlock = async (userId: number, currentBlocked: boolean) => {
-      if (!confirm(`هل تريد ${currentBlocked ? 'إلغاء حظر' : 'حظر'} هذا المستخدم من الدردشة؟`)) return;
-      const res = await adminFetch("/api/admin/chat/block", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, blocked: !currentBlocked })
-      });
-      if (res.ok) {
-        if (selectedChatUser?.id === userId) {
-          setSelectedChatUser({ ...selectedChatUser, chat_blocked: !currentBlocked });
-        }
-        fetchChatList();
-      }
+      showConfirm(
+        `هل تريد ${currentBlocked ? 'إلغاء حظر' : 'حظر'} هذا المستخدم من الدردشة؟`,
+        currentBlocked ? 'إلغاء الحظر' : 'حظر المستخدم',
+        async () => {
+          const res = await adminFetch("/api/admin/chat/block", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId, blocked: !currentBlocked })
+          });
+          if (res.ok) {
+            if (selectedChatUser?.id === userId) {
+              setSelectedChatUser({ ...selectedChatUser, chat_blocked: !currentBlocked });
+            }
+            fetchChatList();
+          }
+        },
+        false
+      );
     };
 
     const handleAddAutoReply = async () => {
@@ -4948,9 +5095,10 @@ export default function App() {
     };
 
     const handleDeleteAutoReply = async (id: number) => {
-      if (!confirm("هل تريد حذف هذا الرد التلقائي؟")) return;
-      const res = await adminFetch(`/api/admin/auto-replies/${id}`, { method: "DELETE" });
-      if (res.ok) fetchAutoReplies();
+      showConfirm("هل تريد حذف هذا الرد التلقائي؟", "حذف الرد التلقائي", async () => {
+        const res = await adminFetch(`/api/admin/auto-replies/${id}`, { method: "DELETE" });
+        if (res.ok) fetchAutoReplies();
+      }, true);
     };
 
     if (selectedChatUser) {
@@ -6304,7 +6452,7 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
                   className="flex-1 bg-green-500 text-white py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1"
                 ><CheckCircle size={12}/>قبول</button>
                 <button
-                  onClick={() => { const r = prompt("سبب الرفض:"); handleOrderAction(order.id, "rejected", r || ""); }}
+                  onClick={() => { showPromptDialog("سبب الرفض:", "رفض الطلب", (r) => { handleOrderAction(order.id, "rejected", r || ""); }, "", "اكتب سبب الرفض..."); }}
                   className="flex-1 bg-red-100 text-red-600 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1"
                 ><XCircle size={12}/>رفض</button>
               </div>
@@ -6780,19 +6928,20 @@ const AdminPanel = ({
 
     const handleUpdateProductPrice = async (id: number, currentPrice: number, storeType?: string) => {
       const label = storeType === 'quantities' ? "السعر لكل وحدة" : "السعر الجديد";
-      const newPrice = prompt(`أدخل ${label}:`, currentPrice.toString());
-      if (newPrice !== null) {
-        const field = storeType === 'quantities' ? 'price_per_unit' : 'price';
-        const res = await adminFetch(`/api/admin/products/${id}/price`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ [field]: parseFloat(newPrice) })
-        });
-        if (res.ok) {
-          showToast("تم التحديث بنجاح", 'success');
-          fetchAdminProducts(selectedSubId);
+      showPromptDialog(`أدخل ${label}:`, "تعديل السعر", async (newPrice) => {
+        if (newPrice !== null && newPrice !== '') {
+          const field = storeType === 'quantities' ? 'price_per_unit' : 'price';
+          const res = await adminFetch(`/api/admin/products/${id}/price`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ [field]: parseFloat(newPrice) })
+          });
+          if (res.ok) {
+            showToast("تم التحديث بنجاح", 'success');
+            fetchAdminProducts(selectedSubId);
+          }
         }
-      }
+      }, currentPrice.toString(), `مثال: ${currentPrice}`);
     };
     const [newVoucher, setNewVoucher] = useState({ code: "", amount: "", max_uses: "1" });
     const [newOffer, setNewOffer] = useState({ title: "", description: "", image_url: "" });
@@ -6816,38 +6965,39 @@ const AdminPanel = ({
       const file = e.target.files?.[0];
       if (!file) return;
       
-      if (!confirm("تحذير: سيتم مسح كافة البيانات الحالية واستبدالها بالبيانات المستوردة. هل أنت متأكد؟")) return;
-
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        try {
-          const data = JSON.parse(event.target?.result as string);
-          const res = await adminFetch("/api/admin/import-db", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(data)
-          });
-          if (res.ok) {
-            showToast("تم استيراد البيانات بنجاح! سيتم إعادة تحميل الصفحة.", 'success');
-            window.location.reload();
-          } else {
-            const err = await res.json();
-            showToast(`فشل الاستيراد: ${err.error}`, 'error');
+      showConfirm("تحذير: سيتم مسح كافة البيانات الحالية واستبدالها بالبيانات المستوردة. هل أنت متأكد؟", "استيراد قاعدة البيانات", () => {
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          try {
+            const data = JSON.parse(event.target?.result as string);
+            const res = await adminFetch("/api/admin/import-db", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(data)
+            });
+            if (res.ok) {
+              showToast("تم استيراد البيانات بنجاح! سيتم إعادة تحميل الصفحة.", 'success');
+              window.location.reload();
+            } else {
+              const err = await res.json();
+              showToast(`فشل الاستيراد: ${err.error}`, 'error');
+            }
+          } catch (err) {
+            showToast("ملف غير صالح", 'info');
           }
-        } catch (err) {
-          showToast("ملف غير صالح", 'info');
-        }
-      };
-      reader.readAsText(file);
+        };
+        reader.readAsText(file);
+      }, true);
     };
 
     const handleClearDB = async () => {
-      if (!confirm("هل أنت متأكد من مسح كافة بيانات الموقع؟ لا يمكن التراجع عن هذه الخطوة.")) return;
-      const res = await adminFetch("/api/admin/clear-db", { method: "POST" });
-      if (res.ok) {
-        showToast("تم مسح قاعدة البيانات بنجاح", 'success');
-        window.location.reload();
-      }
+      showConfirm("هل أنت متأكد من مسح كافة بيانات الموقع؟ لا يمكن التراجع عن هذه الخطوة.", "مسح قاعدة البيانات", async () => {
+        const res = await adminFetch("/api/admin/clear-db", { method: "POST" });
+        if (res.ok) {
+          showToast("تم مسح قاعدة البيانات بنجاح", 'success');
+          window.location.reload();
+        }
+      }, true);
     };
 
     useEffect(() => {
@@ -6881,12 +7031,13 @@ const AdminPanel = ({
     };
 
     const handleDeleteVoucher = async (id: number) => {
-      if (!confirm("هل أنت متأكد من حذف هذا الكود؟")) return;
-      const res = await adminFetch(`/api/admin/vouchers/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        fetchAdminVouchers();
-        showToast("تم حذف الكود", 'success');
-      }
+      showConfirm("هل أنت متأكد من حذف هذا الكود؟", "حذف الكود", async () => {
+        const res = await adminFetch(`/api/admin/vouchers/${id}`, { method: "DELETE" });
+        if (res.ok) {
+          fetchAdminVouchers();
+          showToast("تم حذف الكود", 'success');
+        }
+      }, true);
     };
 
     const fetchAdminSettings = async () => {
@@ -6918,22 +7069,20 @@ const AdminPanel = ({
     };
 
     const handleCloudSync = async () => {
-      if (!confirm("هل تريد مزامنة كافة البيانات الحالية مع قاعدة البيانات السحابية (Supabase)؟")) return;
-      try {
-        const res = await adminFetch("/api/admin/sync-to-cloud", { method: "POST" });
-        const data = await res.json();
-        if (res.ok) {
-          let msg = "تمت المزامنة السحابية بنجاح!\n\nالتفاصيل:\n";
-          for (const [table, status] of Object.entries(data.details || {})) {
-            msg += `${table}: ${status}\n`;
+      showConfirm("هل تريد مزامنة كافة البيانات الحالية مع قاعدة البيانات السحابية (Supabase)؟", "مزامنة سحابية", async () => {
+        try {
+          const res = await adminFetch("/api/admin/sync-to-cloud", { method: "POST" });
+          const data = await res.json();
+          if (res.ok) {
+            let msg = "تمت المزامنة السحابية بنجاح!";
+            showToast(msg, 'success');
+          } else {
+            showToast(`فشل المزامنة: ${data.error}`, 'error');
           }
-          showToast(msg, 'info');
-        } else {
-          showToast(`فشل المزامنة: ${data.error}`, 'error');
+        } catch (e) {
+          showToast("خطأ في الاتصال بالسيرفر", 'error');
         }
-      } catch (e) {
-        showToast("خطأ في الاتصال بالسيرفر", 'error');
-      }
+      }, false);
     };
 
     const fetchAdminUsers = async () => {
@@ -6955,36 +7104,38 @@ const AdminPanel = ({
     };
 
     const handleDeleteUser = async (userId: number) => {
-      if (!confirm("هل أنت متأكد من حذف هذا المستخدم نهائياً؟ لا يمكن التراجع!")) return;
-      try {
-        const res = await adminFetch(`/api/admin/users/${userId}`, { method: "DELETE" });
-        const data = await res.json();
-        if (res.ok) {
-          showToast("✅ تم حذف المستخدم بنجاح", 'success');
-          fetchAdminUsers();
-        } else {
-          showToast("❌ " + (data.error || "فشل الحذف", 'error'));
-        }
-      } catch (e) { showToast("خطأ في الاتصال", 'error'); }
+      showConfirm("هل أنت متأكد من حذف هذا المستخدم نهائياً؟ لا يمكن التراجع!", "حذف المستخدم", async () => {
+        try {
+          const res = await adminFetch(`/api/admin/users/${userId}`, { method: "DELETE" });
+          const data = await res.json();
+          if (res.ok) {
+            showToast("✅ تم حذف المستخدم بنجاح", 'success');
+            fetchAdminUsers();
+          } else {
+            showToast("❌ " + (data.error || "فشل الحذف", 'error'));
+          }
+        } catch (e) { showToast("خطأ في الاتصال", 'error'); }
+      }, true);
     };
 
     const handleBlockUser = async (userId: number) => {
-      const mins = prompt("أدخل مدة الحظر بالدقائق (مثال: 60 = ساعة):");
-      if (!mins || isNaN(parseInt(mins))) return;
-      try {
-        const res = await adminFetch(`/api/admin/users/${userId}/block`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ minutes: parseInt(mins) })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          showToast(`✅ تم حظر المستخدم لمدة ${mins} دقيقة`, 'success');
-          fetchAdminUsers();
-        } else {
-          showToast("❌ " + (data.error || "فشل الحظر", 'error'));
-        }
-      } catch (e) { showToast("خطأ في الاتصال", 'error'); }
+      showPromptDialog("أدخل مدة الحظر بالدقائق (مثال: 60 = ساعة):", "حظر المستخدم", async (mins) => {
+        if (!mins || isNaN(parseInt(mins))) return;
+        try {
+          const res = await adminFetch(`/api/admin/users/${userId}/block`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ minutes: parseInt(mins) })
+          });
+          const data = await res.json();
+          if (res.ok) {
+            showToast(`✅ تم حظر المستخدم لمدة ${mins} دقيقة`, 'success');
+            fetchAdminUsers();
+          } else {
+            showToast("❌ " + (data.error || "فشل الحظر", 'error'));
+          }
+        } catch (e) { showToast("خطأ في الاتصال", 'error'); }
+      }, "", "مثال: 60");
     };
 
     const handleSendNotification = async (userId: number | null, title: string, body: string) => {
@@ -7159,22 +7310,22 @@ const AdminPanel = ({
     };
 
     const handleDelete = async (type: string, id: number) => {
-      if (!confirm("هل أنت متأكد من الحذف؟")) return;
-      const res = await adminFetch(`/api/admin/${type}/${id}`, { method: "DELETE" });
-      const result = await res.json();
-      if (res.ok) {
-        // تحديث كل القوائم بعد الحذف
-        fetchCategories();
-        fetchSubcategories();
-        fetchSubSubCategories();
-        if (type === 'payment-methods') fetchPaymentMethods();
-        if (type === 'banners') fetchBanners();
-        if (type === 'offers') fetchOffers();
-        showToast(result.message || "✅ تم الحذف بنجاح", 'success');
-      } else {
-        const errData = result;
-        showToast("❌ " + (errData.error || "فشل الحذف", 'error'));
-      }
+      showConfirm("هل أنت متأكد من الحذف؟", "تأكيد الحذف", async () => {
+        const res = await adminFetch(`/api/admin/${type}/${id}`, { method: "DELETE" });
+        const result = await res.json();
+        if (res.ok) {
+          fetchCategories();
+          fetchSubcategories();
+          fetchSubSubCategories();
+          if (type === 'payment-methods') fetchPaymentMethods();
+          if (type === 'banners') fetchBanners();
+          if (type === 'offers') fetchOffers();
+          showToast(result.message || "✅ تم الحذف بنجاح", 'success');
+        } else {
+          const errData = result;
+          showToast("❌ " + (errData.error || "فشل الحذف", 'error'));
+        }
+      }, true);
     };
 
     const handleManualTopup = async () => {
@@ -8179,6 +8330,9 @@ const AdminPanel = ({
 
       {/* ===== TOAST CONTAINER ===== */}
       <ToastContainer />
+
+      {/* ===== CUSTOM DIALOG CONTAINER ===== */}
+      <CustomDialogContainer />
     </div>
   );
 }
