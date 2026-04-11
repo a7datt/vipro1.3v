@@ -308,9 +308,12 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "default-src 'self'",
     // [FIX] unsafe-eval حُذف — يمنع هجمات eval-based XSS
     "script-src 'self' 'unsafe-inline' blob:",
-    "style-src 'self' 'unsafe-inline'",
+    // [FIX] أُضيف fonts.googleapis.com لتحميل خط Cairo
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: https: blob:",
-    "font-src 'self' data:",
+    // [FIX] أُضيف fonts.gstatic.com لتحميل ملفات الخط الفعلية
+    "font-src 'self' data: https://fonts.gstatic.com",
     "connect-src 'self' https: wss:",
     "frame-ancestors 'none'",
     "form-action 'self'",
