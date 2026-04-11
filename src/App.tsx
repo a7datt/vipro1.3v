@@ -99,6 +99,51 @@ const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL || "";
 const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// ─── Toast System ────────────────────────────────────────────────────────────
+type ToastType = "success" | "error" | "info";
+interface Toast { id: number; msg: string; type: ToastType }
+let _toastId = 0;
+let _addToast: ((msg: string, type: ToastType) => void) | null = null;
+
+function showToast(msg: string, type: ToastType = "info") {
+  if (_addToast) _addToast(msg, type);
+}
+
+function ToastContainer() {
+  const [toasts, setToasts] = React.useState<Toast[]>([]);
+  React.useEffect(() => {
+    _addToast = (msg, type) => {
+      const id = ++_toastId;
+      setToasts(prev => [...prev, { id, msg, type }]);
+      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3500);
+    };
+    return () => { _addToast = null; };
+  }, []);
+  const colors: Record<ToastType, string> = {
+    success: "bg-green-600",
+    error: "bg-red-600",
+    info: "bg-blue-600",
+  };
+  return (
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none" style={{width:"90vw",maxWidth:360}}>
+      <AnimatePresence>
+        {toasts.map(t => (
+          <motion.div
+            key={t.id}
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.95 }}
+            transition={{ duration: 0.25 }}
+            className={`${colors[t.type]} text-white text-sm font-bold px-4 py-3 rounded-2xl shadow-xl text-center pointer-events-auto`}
+          >
+            {t.msg}
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 const VoucherRedeemView = ({ voucherCode, setVoucherCode, handleRedeemVoucher, setView }: VoucherRedeemViewProps) => (
   <div className="px-6 flex flex-col items-center justify-center min-h-[60vh] space-y-6">
     <div className="w-20 h-20 bg-brand rounded-3xl flex items-center justify-center text-white shadow-xl shadow-brand-soft">
@@ -154,16 +199,16 @@ const AdminLoginView = ({ setIsAdmin, setAdminAuth, setView }: AdminLoginViewPro
         const contentType = res.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const data = await res.json();
-          alert(data.error || "كلمة مرور خاطئة");
+          showToast(data.error || "كلمة مرور خاطئة", "error");
         } else {
-          alert("كلمة مرور خاطئة");
+          showToast("كلمة مرور خاطئة", "error");
         }
       }
     } catch (e: any) {
       if (e.name === 'TypeError' && e.message === 'Failed to fetch') {
-        alert("فشل الاتصال بالسيرفر (تأكد من اتصالك بالإنترنت)");
+        showToast("فشل الاتصال بالسيرفر (تأكد من اتصالك بالإنترنت)", "error");
       } else {
-        alert("فشل الاتصال بالسيرفر");
+        showToast("فشل الاتصال بالسيرفر", "error");
       }
     } finally {
       setLoading(false);
@@ -289,10 +334,10 @@ export class ErrorBoundary extends (Component as any) {
         if (data.success) {
           onUpload(data.data.url);
         } else {
-          alert("فشل الرفع: " + (data.error?.message || "خطأ غير معروف"));
+          showToast("فشل الرفع: " + (data.error?.message || "خطأ غير معروف", "error"));
         }
       } catch (err) {
-        alert("خطأ في الاتصال بخادم الصور");
+        showToast("خطأ في الاتصال بخادم الصور", "error");
       } finally {
         setUploading(false);
       }
@@ -317,7 +362,7 @@ export class ErrorBoundary extends (Component as any) {
         </div>
         {currentUrl && (
           <div className="w-16 h-16 rounded-lg border border-gray-100 overflow-hidden bg-gray-50">
-            <img src={currentUrl} className="w-full h-full object-cover" alt="Preview" referrerPolicy="no-referrer" />
+            <img src={currentUrl} className="w-full h-full object-cover" alt="Preview" referrerPolicy="no-referrer" /> loading="lazy"
           </div>
         )}
       </div>
@@ -329,6 +374,26 @@ export default function App() {
   const [user, setUser] = useState<UserData | null>(null);
   const [userStats, setUserStats] = useState<any>(null);
   const [view, setView] = useState<{ type: string; id?: number; data?: any; catId?: number; fromSubSub?: boolean; subId?: number; subName?: string; fromFav?: boolean }>({ type: "main" });
+
+  // ─── Physical back button support ───────────────────────────────────────────
+  const navigateTo = React.useCallback((newView: { type: string; id?: number; data?: any; catId?: number; fromSubSub?: boolean; subId?: number; subName?: string; fromFav?: boolean }) => {
+    if (newView.type !== "main") {
+      window.history.pushState({ view: newView }, "");
+    }
+    setView(newView);
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (e.state?.view) {
+        setView(e.state.view);
+      } else {
+        setView({ type: "main" });
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
   const [pageLoading, setPageLoading] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
@@ -735,7 +800,7 @@ export default function App() {
       });
       if (res.ok) {
         fetchUser(user.id);
-        alert("تم فك الارتباط بنجاح. لقد تم تسجيل خروجك من بوت تليجرام أيضاً.");
+        showToast("تم فك الارتباط بنجاح. لقد تم تسجيل خروجك من بوت تليجرام أيضاً.", "success");
       }
     } catch (e) {
       console.error(e);
@@ -758,11 +823,11 @@ export default function App() {
           timeLeft: 600 // 10 minutes
         });
       } else {
-        alert(data.error || "فشل توليد الكود");
+        showToast(data.error || "فشل توليد الكود", "error");
       }
     } catch (e) {
       console.error(e);
-      alert("خطأ في الاتصال بالسيرفر");
+      showToast("خطأ في الاتصال بالسيرفر", "error");
     }
   };
 
@@ -779,12 +844,12 @@ export default function App() {
         setThemeModal({ ...themeModal, isOpen: false });
       }
     } catch (e) {
-      alert("فشل تحديث الثيم");
+      showToast("فشل تحديث الثيم", "error");
     }
   };
 
   const handleChangeAdminPassword = async () => {
-    if (!newAdminPass) return alert("يرجى إدخال كلمة المرور الجديدة");
+    if (!newAdminPass) return showToast("يرجى إدخال كلمة المرور الجديدة", "error");
     try {
       const res = await adminFetch("/api/admin/change-password", {
         method: "POST",
@@ -792,11 +857,11 @@ export default function App() {
         body: JSON.stringify({ newPassword: newAdminPass })
       });
       if (res.ok) {
-        alert("تم تغيير كلمة المرور بنجاح");
+        showToast("تم تغيير كلمة المرور بنجاح", "success");
         setNewAdminPass("");
       }
     } catch (e) {
-      alert("فشل تغيير كلمة المرور");
+      showToast("فشل تغيير كلمة المرور", "error");
     }
   };
 
@@ -868,17 +933,17 @@ export default function App() {
 
       const data = await res.json();
       if (res.ok) {
-        alert(`✅ تم شحن ${data.amount}$ بنجاح!`);
+        showToast(`✅ تم شحن ${data.amount}$ بنجاح!`, "success");
         setVoucherCode("");
         fetchUser(user.id);
       } else {
-        alert(`❌ ${data.error}`);
+        showToast(`❌ ${data.error}`, "error");
       }
     } catch (e: any) {
       if (e.name === 'TypeError' && e.message === 'Failed to fetch') {
-        alert("❌ فشل الاتصال بالخادم (تأكد من اتصالك بالإنترنت)");
+        showToast("❌ فشل الاتصال بالخادم (تأكد من اتصالك بالإنترنت)", "error");
       } else {
-        alert("❌ فشل الاتصال بالخادم");
+        showToast("❌ فشل الاتصال بالخادم", "error");
       }
     }
   };
@@ -1145,7 +1210,7 @@ export default function App() {
             alt="Logo" 
             className="w-full h-full object-contain"
             referrerPolicy="no-referrer"
-          />
+          /> loading="lazy"
         </div>
         <span className={`font-bold text-gray-800 hidden sm:block ${user?.is_vip ? 'text-amber-600' : ''}`}>
           فيبرو {user?.is_vip && 'VIP'}
@@ -1332,7 +1397,7 @@ export default function App() {
                   {/* صورة الحساب */}
                   <div className="w-16 h-16 rounded-2xl overflow-hidden bg-white/20 flex items-center justify-center flex-shrink-0 border-2 border-white/30">
                     {user.avatar_url
-                      ? <img src={user.avatar_url} alt="avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ? <img src={user.avatar_url} alt="avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> loading="lazy"
                       : <User size={28} className="text-white" />
                     }
                   </div>
@@ -1475,8 +1540,58 @@ export default function App() {
 
   // --- Views ---
 
+  // ─── Skeleton Components ──────────────────────────────────────────────────
+  const SkeletonCard = ({ aspect = "square" }: { aspect?: "square" | "wide" }) => (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden animate-pulse">
+      <div className={`w-full ${aspect === "wide" ? "h-24" : "aspect-square"} bg-gray-200`} />
+      <div className="p-2 space-y-1.5">
+        <div className="h-3 bg-gray-200 rounded-full w-3/4" />
+        <div className="h-3 bg-gray-100 rounded-full w-1/2" />
+      </div>
+    </div>
+  );
+
+  const SkeletonList = ({ rows = 4 }: { rows?: number }) => (
+    <div className="space-y-3 px-4">
+      {Array.from({length: rows}).map((_, i) => (
+        <div key={i} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex gap-3 animate-pulse">
+          <div className="w-14 h-14 rounded-xl bg-gray-200 shrink-0" />
+          <div className="flex-1 space-y-2 pt-1">
+            <div className="h-3 bg-gray-200 rounded-full w-3/4" />
+            <div className="h-3 bg-gray-100 rounded-full w-1/2" />
+            <div className="h-3 bg-gray-100 rounded-full w-1/4" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
   const HomeView = () => {
     const [currentBanner, setCurrentBanner] = useState(0);
+    const [pullY, setPullY] = useState(0);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const pullStartY = React.useRef(0);
+    const PULL_THRESHOLD = 70;
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+      if (window.scrollY === 0) pullStartY.current = e.touches[0].clientY;
+    };
+    const handleTouchMove = (e: React.TouchEvent) => {
+      if (isRefreshing) return;
+      const delta = e.touches[0].clientY - pullStartY.current;
+      if (delta > 0 && window.scrollY === 0) setPullY(Math.min(delta * 0.5, PULL_THRESHOLD + 20));
+    };
+    const handleTouchEnd = async () => {
+      if (pullY >= PULL_THRESHOLD && !isRefreshing) {
+        setIsRefreshing(true);
+        setPullY(0);
+        await fetchCategories();
+        if (user) await fetchUser(user.id);
+        setIsRefreshing(false);
+      } else {
+        setPullY(0);
+      }
+    };
 
     useEffect(() => {
       if (banners.length > 1) {
@@ -1488,7 +1603,21 @@ export default function App() {
     }, [banners]);
 
     return (
-      <div className="space-y-6 pb-20">
+      <div
+        className="space-y-6 pb-20"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{transform: pullY > 0 ? `translateY(${pullY}px)` : undefined, transition: pullY === 0 ? "transform 0.3s ease" : undefined}}
+      >
+        {/* Pull-to-refresh indicator */}
+        {(pullY > 0 || isRefreshing) && (
+          <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 flex items-center justify-center">
+            <div className={`bg-white rounded-full shadow-lg p-2 ${isRefreshing ? "animate-spin" : ""}`}>
+              <RefreshCw size={20} className="text-brand" style={{transform: pullY > 0 ? `rotate(${(pullY/PULL_THRESHOLD)*180}deg)` : undefined}} />
+            </div>
+          </div>
+        )}
         {/* Hero Carousel */}
         <div className="px-4">
           <div className={`aspect-[3/1] bg-gray-100 rounded-2xl overflow-hidden relative shadow-lg ${theme.shadow}`}>
@@ -1539,6 +1668,7 @@ export default function App() {
               if (v === "most_purchased") fetchMostPurchased();
             }}
             className={`text-sm font-medium border-0 outline-none bg-transparent ${theme.text} cursor-pointer`}
+            style={{paddingInlineEnd: "4px", paddingInlineStart: "4px", direction: "rtl"}}
           >
             <option value="categories">اختر الترتيب</option>
             <option value="most_purchased">أكثر المنتجات شراءً</option>
@@ -1550,12 +1680,7 @@ export default function App() {
         {homeSortMode === "categories" && (
           <div className="grid grid-cols-3 gap-3">
             {categories.length === 0 ? (
-              [1,2,3,4,5,6].map(i => (
-                <div key={i} className="bg-gray-100 rounded-xl overflow-hidden animate-pulse">
-                  <div className="w-full aspect-square bg-gray-200" />
-                  <div className="h-4 bg-gray-200 mx-2 my-2 rounded-full" />
-                </div>
-              ))
+              [1,2,3,4,5,6].map(i => <SkeletonCard key={i} />)
             ) : categories.map(cat => {
               const favKey = `cat_${cat.id}`;
               let longPressTimer: any = null;
@@ -1609,12 +1734,7 @@ export default function App() {
         {homeSortMode === "most_purchased" && (
           <div className="grid grid-cols-3 gap-3">
             {mostPurchasedLoading ? (
-              [1,2,3,4,5,6,7,8,9].map(i => (
-                <div key={i} className="bg-gray-100 rounded-xl overflow-hidden animate-pulse">
-                  <div className="w-full aspect-square bg-gray-200" />
-                  <div className="h-4 bg-gray-200 mx-2 my-2 rounded-full" />
-                </div>
-              ))
+              [1,2,3,4,5,6,7,8,9].map(i => <SkeletonCard key={i} />)
             ) : mostPurchased.length === 0 ? (
               <div className="col-span-3 text-center text-gray-400 py-10 text-sm">لا توجد بيانات بعد</div>
             ) : mostPurchased.slice(0, 9).map((prod: any) => (
@@ -1747,7 +1867,7 @@ export default function App() {
               <div key={offer.id} className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center gap-4">
                 <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center overflow-hidden">
                   {offer.image_url ? (
-                    <img src={offer.image_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    <img src={offer.image_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" /> loading="lazy"
                   ) : (
                     <ImageIcon size={24} className="text-orange-600" />
                   )}
@@ -1906,7 +2026,7 @@ export default function App() {
                 <div key={prod.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-4">
                   <div className="flex items-center gap-4">
                     <div className="w-16 h-16 bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden">
-                      <img src={prod.image_url || "https://picsum.photos/seed/prod/100/100"} alt={prod.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <img src={prod.image_url || "https://picsum.photos/seed/prod/100/100"} alt={prod.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" /> loading="lazy"
                     </div>
                     <div className="flex-1">
                       <h4 className="font-bold text-gray-800">{prod.name}</h4>
@@ -2008,7 +2128,7 @@ export default function App() {
             >
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden relative">
-                  <img src={prod.image_url || "https://picsum.photos/seed/prod/100/100"} alt={prod.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <img src={prod.image_url || "https://picsum.photos/seed/prod/100/100"} alt={prod.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" /> loading="lazy"
                   {isFavorite(`prod_${prod.id}`) && <span className="absolute top-0.5 right-0.5 text-yellow-400 text-xs">⭐</span>}
                 </div>
                 <div className="flex-1">
@@ -2349,7 +2469,7 @@ export default function App() {
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-4">
           <div className="flex items-center gap-4 pb-4 border-b border-gray-50">
             <div className="w-16 h-16 bg-gray-50 rounded-xl overflow-hidden">
-              <img src={prod.image_url || "https://picsum.photos/seed/prod/100/100"} alt={prod.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              <img src={prod.image_url || "https://picsum.photos/seed/prod/100/100"} alt={prod.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" /> loading="lazy"
             </div>
             <div className="flex-1">
               <h4 className="font-bold text-gray-800">{prod.name}</h4>
@@ -2513,11 +2633,11 @@ export default function App() {
           setReceiptUrl(data.data.url);
         } else {
           console.error("ImgBB Error:", data);
-          alert("فشل رفع الصورة: " + (data.error?.message || "خطأ غير معروف"));
+          showToast("فشل رفع الصورة: " + (data.error?.message || "خطأ غير معروف", "error"));
         }
       } catch (err) {
         console.error("Upload Error:", err);
-        alert("خطأ في الاتصال بخادم الصور");
+        showToast("خطأ في الاتصال بخادم الصور", "error");
       } finally {
         setUploading(false);
       }
@@ -2531,7 +2651,7 @@ export default function App() {
 
     const handleAutoTopUp = async () => {
       if (!user || !selectedMethod || !amount || !txNumber) {
-        alert("يرجى إدخال المبلغ ورقم العملية");
+        showToast("يرجى إدخال المبلغ ورقم العملية", "error");
         return;
       }
       setLoading(true);
@@ -2554,10 +2674,10 @@ export default function App() {
           const orig = data.originalAmount ? ` (${data.originalAmount} ${data.currency})` : "";
           setView({ type: "success", data: `✅ تم شحن ${added.toFixed(4)}$${orig} بنجاح عبر ${selectedMethod.name}!` });
         } else {
-          alert(data.error || "فشل التحقق");
+          showToast(data.error || "فشل التحقق", "error");
         }
       } catch (e) {
-        alert("فشل الاتصال بالخادم");
+        showToast("فشل الاتصال بالخادم", "error");
       } finally {
         setLoading(false);
       }
@@ -2565,13 +2685,13 @@ export default function App() {
 
     const handleTopUp = async () => {
       if (!user || !selectedMethod || !amount || !receiptUrl) {
-        alert("يرجى إكمال جميع البيانات ورفع الإيصال");
+        showToast("يرجى إكمال جميع البيانات ورفع الإيصال", "error");
         return;
       }
       
       const numAmount = parseFloat(amount);
       if (numAmount < selectedMethod.min_amount) {
-        alert(`أقل مبلغ للشحن عبر هذه الطريقة هو ${selectedMethod.min_amount} $`);
+        showToast(`أقل مبلغ للشحن عبر هذه الطريقة هو ${selectedMethod.min_amount} $`, "info");
         return;
       }
 
@@ -2593,10 +2713,10 @@ export default function App() {
           setView({ type: "success", data: "تم إرسال طلب الشحن بنجاح، يرجى انتظار التحقق." });
           fetchTransactions();
         } else {
-          alert(data.error || "فشل إرسال الطلب");
+          showToast(data.error || "فشل إرسال الطلب", "error");
         }
       } catch (e) {
-        alert("فشل الاتصال بالخادم، يرجى المحاولة لاحقاً");
+        showToast("فشل الاتصال بالخادم، يرجى المحاولة لاحقاً", "error");
         console.error(e);
       } finally {
         setLoading(false);
@@ -2677,7 +2797,7 @@ export default function App() {
                     <label className="w-full h-32 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-2 text-gray-400 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors relative overflow-hidden">
                       {receiptUrl ? (
                         <>
-                          <img src={receiptUrl} className="w-full h-full object-cover" alt="Receipt" referrerPolicy="no-referrer" />
+                          <img src={receiptUrl} className="w-full h-full object-cover" alt="Receipt" referrerPolicy="no-referrer" /> loading="lazy"
                           <button onClick={clearReceipt} className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-colors z-10"><X size={16} /></button>
                         </>
                       ) : (
@@ -2733,7 +2853,7 @@ export default function App() {
               className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col items-center gap-2 hover:border-brand-soft transition-colors"
             >
               <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden">
-                <img src={method.image_url || "https://picsum.photos/seed/pay/100/100"} alt={method.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <img src={method.image_url || "https://picsum.photos/seed/pay/100/100"} alt={method.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" /> loading="lazy"
               </div>
               <span className="font-bold text-gray-800 text-[10px] text-center">{method.name}</span>
             </button>
@@ -2824,7 +2944,7 @@ export default function App() {
                           alt="Receipt" 
                           className="w-full h-full object-contain"
                           referrerPolicy="no-referrer"
-                          onClick={() => window.open(t.receipt_image_url, '_blank')}
+                          onClick={() => loading="lazy" window.open(t.receipt_image_url, '_blank')}
                         />
                       </div>
                     </div>
@@ -3055,10 +3175,10 @@ export default function App() {
             },
             body: JSON.stringify({ avatar_url: data.data.url })
           });
-          if (updateRes.ok) { fetchUser(user!.id); alert("✅ تم تحديث الصورة الشخصية بنجاح"); }
-          else { const err = await updateRes.json(); alert("فشل التحديث: " + (err.error || "")); }
-        } else { alert("فشل رفع الصورة على الخادم"); }
-      } catch { alert("فشل رفع الصورة"); } finally { setUploading(false); }
+          if (updateRes.ok) { fetchUser(user!.id); showToast("✅ تم تحديث الصورة الشخصية بنجاح", "success"); }
+          else { const err = await updateRes.json(); showToast("فشل التحديث: " + (err.error || "", "error")); }
+        } else { showToast("فشل رفع الصورة على الخادم", "error"); }
+      } catch { showToast("فشل رفع الصورة", "error"); } finally { setUploading(false); }
     };
 
     return (
@@ -3082,7 +3202,7 @@ export default function App() {
           <div className="relative">
             <div className={`w-24 h-24 ${theme.bgLight} rounded-full flex items-center justify-center ${theme.icon} border-4 border-white shadow-lg ${theme.shadow} overflow-hidden ${user?.is_vip ? 'vip-glow' : ''} ${user?.stats?.frame ? `frame-${user.stats.frame}` : ''}`}>
               {user?.avatar_url ? (
-                <img src={user.avatar_url} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <img src={user.avatar_url} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> loading="lazy"
               ) : <User size={48} />}
               {uploading && (
                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
@@ -3235,12 +3355,12 @@ export default function App() {
                                 const res = await fetch("/api/rewards/claim", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("authToken") || ""}` }, body: JSON.stringify({ goalIndex: index }) });
                                 const resData = await res.json();
                                 if (res.ok) {
-                                  alert("🎁 مبروك! تم استلام المكافأة بنجاح");
+                                  showToast("🎁 مبروك! تم استلام المكافأة بنجاح", "success");
                                   if (resData.stats) { setUser(prev => prev ? { ...prev, stats: resData.stats } : prev); }
                                   fetchUser(user.id);
-                                } else { alert(resData.error || "فشل استلام المكافأة"); }
+                                } else { showToast(resData.error || "فشل استلام المكافأة", "error"); }
                               } catch (error) { 
-  alert("خطأ في الاتصال");
+  showToast("خطأ في الاتصال", "error");
                                 }
                             }}
                             className="bg-brand text-white px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm active:scale-95 transition-all whitespace-nowrap"
@@ -3271,7 +3391,7 @@ export default function App() {
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50 overflow-hidden">
           <ProfileItem icon={<User size={20} />} label="تعديل الملف الشخصي" onClick={() => setView({ type: "edit_profile" })} />
           {!!user?.stats?.has_special_support && (
-            <ProfileItem icon={<ShieldCheck size={20} />} label="الدعم الخاص (الأولوية)" className="text-amber-600 bg-amber-50/50" onClick={() => alert("لديك أولوية في الدعم الفني. تواصل معنا عبر الواتساب.")} />
+            <ProfileItem icon={<ShieldCheck size={20} />} label="الدعم الخاص (الأولوية)" className="text-amber-600 bg-amber-50/50" onClick={() => showToast("لديك أولوية في الدعم الفني. تواصل معنا عبر الواتساب.", "info")} />
           )}
           <ProfileItem icon={<Settings size={20} />} label="الإعدادات" onClick={() => setView({ type: "settings" })} />
           <ProfileItem icon={<Clock size={20} />} label="سياسة الخصوصية" onClick={() => setView({ type: "privacy_policy" })} />
@@ -3934,7 +4054,7 @@ export default function App() {
         <div className={`bg-white p-5 rounded-3xl border border-gray-100 shadow-sm flex flex-col items-center text-center space-y-2 ${user?.is_vip ? 'vip-card-glow border-amber-200' : ''}`}>
           <div className={`w-20 h-20 ${theme.bgLight} rounded-full flex items-center justify-center ${theme.icon} border-4 border-white shadow-lg overflow-hidden ${user?.is_vip ? 'vip-glow' : ''}`}>
             {user?.avatar_url ? (
-              <img src={user.avatar_url} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              <img src={user.avatar_url} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> loading="lazy"
             ) : (
               <User size={40} />
             )}
@@ -4134,7 +4254,7 @@ export default function App() {
                 {/* Avatar */}
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden ${theme.bgLight}`}>
                   {entry.avatar_url
-                    ? <img src={entry.avatar_url} className="w-full h-full object-cover" referrerPolicy="no-referrer"/>
+                    ? <img src={entry.avatar_url} className="w-full h-full object-cover" referrerPolicy="no-referrer"/> loading="lazy"
                     : <User size={20} className={theme.icon}/>}
                 </div>
                 {/* Name */}
@@ -4299,7 +4419,7 @@ export default function App() {
 
     const copyLink = () => {
       navigator.clipboard.writeText(referralLink);
-      alert("تم نسخ رابط الإحالة");
+      showToast("تم نسخ رابط الإحالة", "success");
     };
 
     return (
@@ -4451,10 +4571,10 @@ export default function App() {
           fetchMessages();
         } else {
           const data = await res.json();
-          alert(data.error || "فشل الإرسال");
+          showToast(data.error || "فشل الإرسال", "error");
         }
       } catch (e) {
-        alert("خطأ في الاتصال");
+        showToast("خطأ في الاتصال", "error");
       } finally {
         setSending(false);
       }
@@ -4512,7 +4632,7 @@ export default function App() {
           setSelectedFile(null);
         }
       } catch (err) {
-        alert("فشل رفع الصورة");
+        showToast("فشل رفع الصورة", "error");
       } finally {
         setUploading(false);
       }
@@ -4557,7 +4677,7 @@ export default function App() {
                     </div>
                   )}
                   {m.image_url && (
-                    <img src={m.image_url} alt="Chat" className="rounded-lg mb-2 max-w-full border border-gray-100" referrerPolicy="no-referrer" />
+                    <img src={m.image_url} alt="Chat" className="rounded-lg mb-2 max-w-full border border-gray-100" referrerPolicy="no-referrer" /> loading="lazy"
                   )}
                   {m.type === 'rating_request' ? (
                     <div className="text-center py-2">
@@ -4635,7 +4755,7 @@ export default function App() {
                     <X size={20} />
                   </button>
                 </div>
-                <img src={imagePreview} alt="Preview" className="w-full h-64 object-contain rounded-xl mb-4 bg-gray-50" />
+                <img src={imagePreview} alt="Preview" className="w-full h-64 object-contain rounded-xl mb-4 bg-gray-50" /> loading="lazy"
                 <button 
                   onClick={confirmAndSendImage}
                   disabled={uploading}
@@ -4760,7 +4880,7 @@ export default function App() {
           fetchMessages(selectedChatUser.id, selectedChatUser.is_guest);
         }
       } catch (e) {
-        alert("فشل الإرسال");
+        showToast("فشل الإرسال", "error");
       }
     };
 
@@ -4782,7 +4902,7 @@ export default function App() {
     const handleAddAutoReply = async () => {
       const trigger = triggerRef.current?.value?.trim() || "";
       const replyText = replyRef.current?.value?.trim() || "";
-      if (!trigger || !replyText) return alert("يرجى إدخال النص والرد");
+      if (!trigger || !replyText) return showToast("يرجى إدخال النص والرد", "error");
       const res = await adminFetch("/api/admin/auto-replies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -4795,9 +4915,9 @@ export default function App() {
         fetchAutoReplies();
         // إرسال الرد فوراً للمستخدم الحالي إن وجد
         if (selectedChatUser) handleSendReply(replyText);
-        alert("✅ تم حفظ الرد التلقائي وإرساله");
+        showToast("✅ تم حفظ الرد التلقائي وإرساله", "success");
       } else {
-        alert("❌ فشل الحفظ");
+        showToast("❌ فشل الحفظ", "error");
       }
     };
 
@@ -4817,7 +4937,7 @@ export default function App() {
               </button>
               <div className="w-10 h-10 bg-gray-100 rounded-full overflow-hidden border border-gray-200">
                 {selectedChatUser.avatar_url ? (
-                  <img src={selectedChatUser.avatar_url} alt="" className="w-full h-full object-cover" />
+                  <img src={selectedChatUser.avatar_url} alt="" className="w-full h-full object-cover" /> loading="lazy"
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-400"><User size={20} /></div>
                 )}
@@ -4858,7 +4978,7 @@ export default function App() {
                   <div className={`max-w-[85%] p-3 rounded-2xl shadow-sm relative ${
                     m.sender_role === 'admin' ? 'bg-[var(--brand)] text-white rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none'
                   }`}>
-                    {m.image_url && <img src={m.image_url} alt="" className="rounded-lg mb-2 max-w-full border border-gray-100" referrerPolicy="no-referrer" />}
+                    {m.image_url && <img src={m.image_url} alt="" className="rounded-lg mb-2 max-w-full border border-gray-100" referrerPolicy="no-referrer" /> loading="lazy"}
                     {m.content && <p className="text-sm font-medium leading-relaxed">{m.content}</p>}
                     <p className={`text-[8px] mt-1 ${m.sender_role === 'admin' ? 'text-white/70' : 'text-gray-400'}`}>
                       {new Date(m.created_at).toLocaleString("ar-EG", { hour: '2-digit', minute: '2-digit' })}
@@ -4986,7 +5106,7 @@ export default function App() {
             >
               <div className="w-12 h-12 bg-gray-50 rounded-full overflow-hidden relative border border-gray-100">
                 {chat.avatar_url ? (
-                  <img src={chat.avatar_url} alt="" className="w-full h-full object-cover" />
+                  <img src={chat.avatar_url} alt="" className="w-full h-full object-cover" /> loading="lazy"
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-400"><User size={24} /></div>
                 )}
@@ -5076,7 +5196,7 @@ export default function App() {
             <span className="font-medium text-gray-700">الإشعارات</span>
           </div>
           <button 
-            onClick={() => alert("تم تفعيل الإشعارات بنجاح!")}
+            onClick={() => showToast("تم تفعيل الإشعارات بنجاح!", "success")}
             className="w-10 h-5 bg-brand rounded-full relative"
           >
             <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
@@ -5374,14 +5494,14 @@ export default function App() {
                       const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, { method: "POST", body: formData });
                       const data = await res.json();
                       if (data.success) setGlobalImageUrl(data.data.url);
-                      else alert("فشل رفع الصورة");
-                    } catch { alert("خطأ في رفع الصورة"); }
+                      else showToast("فشل رفع الصورة", "error");
+                    } catch { showToast("خطأ في رفع الصورة", "error"); }
                   }}/>
                 </label>
               </div>
               {globalImageUrl && (
                 <div className="mt-2 flex items-center gap-2">
-                  <img src={globalImageUrl} className="w-12 h-12 object-cover rounded-lg border border-gray-100" referrerPolicy="no-referrer"/>
+                  <img src={globalImageUrl} className="w-12 h-12 object-cover rounded-lg border border-gray-100" referrerPolicy="no-referrer"/> loading="lazy"
                   <button onClick={() => setGlobalImageUrl("")} className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded-lg">حذف</button>
                 </div>
               )}
@@ -5466,7 +5586,7 @@ export default function App() {
 
           <button
             onClick={async () => {
-              if (!targetSubcategoryId) return alert("اختر القسم الفرعي أولاً");
+              if (!targetSubcategoryId) return showToast("اختر القسم الفرعي أولاً", "info");
               setSyncLoading(true); setSyncResult(null);
               try {
                 const res = await adminFetch("/api/admin/ahminix/sync", { method:"POST", headers:{"Content-Type":"application/json"},
@@ -5594,7 +5714,7 @@ const AdminUserCard = ({ u, fetchAdminUsers, handleToggleVip, handleBlockUser, h
       {/* Header Row */}
       <div className="p-4 flex items-center gap-3">
         <div className="w-11 h-11 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden shrink-0 border-2 border-white shadow">
-          {u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover" referrerPolicy="no-referrer"/> : <User size={20} className="text-gray-400"/>}
+          {u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover" referrerPolicy="no-referrer"/> loading="lazy" : <User size={20} className="text-gray-400"/>}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
@@ -5750,7 +5870,7 @@ const AdminStatsTab = ({ adminFetch }: { adminFetch: any }) => {
 
   const handleReset = async () => {
     const res = await adminFetch("/api/admin/analytics/reset", { method: "POST", headers: {"Content-Type":"application/json"} });
-    if (res.ok) { alert("✅ تم تصفير الأرباح"); fetchStats(); }
+    if (res.ok) { showToast("✅ تم تصفير الأرباح", "success"); fetchStats(); }
     setShowResetConfirm(false);
   };
 
@@ -6058,17 +6178,17 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
   const data = await res.json();
   if (!res.ok) {
     // خطأ حقيقي في السيرفر (ليس خطأ API)
-    alert(data.error || "حدث خطأ في السيرفر");
+    showToast(data.error || "حدث خطأ في السيرفر", "error");
     fetchAdminOrders();
     return;
   }
   if (action === "approved") {
     if (data.finalStatus === "completed") {
-      alert("✅ تم التنفيذ بنجاح");
+      showToast("✅ تم التنفيذ بنجاح", "success");
     } else if (data.apiError) {
-      alert(`⏳ تم إرسال الطلب — قيد المعالجة\n\nملاحظة: ${data.apiError}`);
+      showToast(`⏳ تم إرسال الطلب — قيد المعالجة\n\nملاحظة: ${data.apiError}`, "info");
     } else {
-      alert("⏳ تم الإرسال — قيد المعالجة");
+      showToast("⏳ تم الإرسال — قيد المعالجة", "success");
     }
   }
   fetchAdminOrders();
@@ -6148,10 +6268,10 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify(body)
                     }).then((res: Response) => res.json()).then((data: any) => {
-                      if (data.error) { alert(data.error || "حدث خطأ"); }
-                      else if (data.finalStatus === "completed") { alert("✅ تم التنفيذ بنجاح"); }
-                      else if (data.apiError) { alert(`⏳ تم إرسال الطلب — قيد المعالجة\n\nملاحظة: ${data.apiError}`); }
-                      else { alert("⏳ تم الإرسال — قيد المعالجة"); }
+                      if (data.error) { showToast(data.error || "حدث خطأ", "error"); }
+                      else if (data.finalStatus === "completed") { showToast("✅ تم التنفيذ بنجاح", "success"); }
+                      else if (data.apiError) { showToast(`⏳ تم إرسال الطلب — قيد المعالجة\n\nملاحظة: ${data.apiError}`, "info"); }
+                      else { showToast("⏳ تم الإرسال — قيد المعالجة", "success"); }
                       fetchAdminOrders();
                     });
                   }}
@@ -6185,7 +6305,7 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
           <div className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-gray-50">
             <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden flex-shrink-0 flex items-center justify-center">
               {order.user_avatar
-                ? <img src={order.user_avatar} className="w-full h-full object-cover" referrerPolicy="no-referrer"/>
+                ? <img src={order.user_avatar} className="w-full h-full object-cover" referrerPolicy="no-referrer"/> loading="lazy"
                 : <User size={18} className="text-gray-400"/>}
             </div>
             <div className="min-w-0 flex-1">
@@ -6226,7 +6346,7 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
                   e.stopPropagation();
                   const res = await adminFetch(`/api/admin/ahminix/sync-order/${order.id}`, { method: "POST" });
                   const d = await res.json();
-                  alert(d.error ? `خطأ: ${d.error}` : `${d.oldStatus} ← ${d.newStatus} (API: ${d.ahminixStatus})`);
+                  showToast(d.error ? `خطأ: ${d.error}` : `${d.oldStatus} ← ${d.newStatus} (API: ${d.ahminixStatus}, "error")`);
                   fetchAdminOrders();
                 }} className="w-full text-xs bg-blue-50 text-blue-600 py-2 rounded-xl font-bold border border-blue-100 active:scale-95">🔄 مزامنة مع Ahminix</button>
               )}
@@ -6259,8 +6379,8 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
                         body: JSON.stringify({ status: newStatus === "completed" ? "approved" : newStatus === "failed" ? "rejected" : newStatus, admin_response: "" })
                       });
                       const d = await res.json();
-                      if (d.error) alert(`خطأ: ${d.error}`);
-                      else { alert("✅ تم تحديث الحالة"); fetchAdminOrders(); }
+                      if (d.error) showToast(`خطأ: ${d.error}`, "info");
+                      else { showToast("✅ تم تحديث الحالة", "success"); fetchAdminOrders(); }
                     }}
                     className="bg-[var(--brand)] text-white px-3 py-2 rounded-lg text-xs font-bold active:scale-95"
                   >حفظ</button>
@@ -6300,7 +6420,7 @@ const AdminTransactionsTab = ({adminTransactions, transSearch, setTransSearch, h
           <div className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-gray-50">
             <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden flex-shrink-0 flex items-center justify-center">
               {t.user_avatar
-                ? <img src={t.user_avatar} className="w-full h-full object-cover" referrerPolicy="no-referrer"/>
+                ? <img src={t.user_avatar} className="w-full h-full object-cover" referrerPolicy="no-referrer"/> loading="lazy"
                 : <User size={18} className="text-gray-400"/>}
             </div>
             <div className="min-w-0 flex-1">
@@ -6336,7 +6456,7 @@ const AdminTransactionsTab = ({adminTransactions, transSearch, setTransSearch, h
               {t.receipt_image_url && (
                 <div>
                   <p className="text-[9px] text-gray-400 font-bold mb-1">صورة الإيصال</p>
-                  <img src={t.receipt_image_url} className="w-full h-44 object-cover rounded-xl cursor-pointer border border-gray-100" referrerPolicy="no-referrer" onClick={() => window.open(t.receipt_image_url, '_blank')}/>
+                  <img src={t.receipt_image_url} className="w-full h-44 object-cover rounded-xl cursor-pointer border border-gray-100" referrerPolicy="no-referrer" onClick={() => loading="lazy" window.open(t.receipt_image_url, '_blank')}/>
                 </div>
               )}
               {/* ملاحظة */}
@@ -6426,9 +6546,9 @@ const AdminElementsTab = ({categories, subcategories, subSubCategories, fetchCat
   const epMap: Record<string,string> = { categories:"categories", subcategories:"subcategories", subSubCategories:"sub-sub-categories", products:"products", paymentMethods:"payment-methods", banners:"banners", offers:"offers", vouchers:"vouchers" };
   try {
   const res = await adminFetch(`/api/admin/${epMap[editingType]}/${editingItem.id}`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify(editingItem) });
-  if (res.ok) { alert("تم التعديل"); setEditingItem(null); setEditingType(""); loadElements(elementsType); fetchCategories(); fetchSubcategories(); fetchSubSubCategories(); fetchPaymentMethods(); fetchBanners(); fetchOffers(); }
-  else { const d = await res.json(); alert("فشل: "+(d.error||"")); }
-  } catch { alert("خطأ في الاتصال"); }
+  if (res.ok) { showToast("تم التعديل", "success"); setEditingItem(null); setEditingType(""); loadElements(elementsType); fetchCategories(); fetchSubcategories(); fetchSubSubCategories(); fetchPaymentMethods(); fetchBanners(); fetchOffers(); }
+  else { const d = await res.json(); showToast("فشل: "+(d.error||"", "error")); }
+  } catch { showToast("خطأ في الاتصال", "error"); }
   };
   const delMap: Record<string,string> = { categories:"categories", subcategories:"subcategories", subSubCategories:"sub-sub-categories", products:"products", paymentMethods:"payment-methods", banners:"banners", offers:"offers", vouchers:"vouchers" };
   const tabs4 = [
@@ -6481,7 +6601,7 @@ const AdminElementsTab = ({categories, subcategories, subSubCategories, fetchCat
         {!loadingElements && allElements.map((item: any) => (
           <div key={item.id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100 shadow-sm">
             <div className="flex items-center gap-2 min-w-0">
-              {item.image_url && <img src={item.image_url} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" referrerPolicy="no-referrer"/>}
+              {item.image_url && <img src={item.image_url} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" referrerPolicy="no-referrer"/> loading="lazy"}
               <div className="min-w-0">
                 <p className="text-xs font-bold text-gray-700 truncate">{item.name||item.title||item.code||`#${item.id}`}</p>
                 {item.price !== undefined && <p className="text-[10px] text-brand">{item.store_type==='quantities'?`${item.price_per_unit}$/وحدة`:`${Number(item.price).toFixed(2)} $`}</p>}
@@ -6643,7 +6763,7 @@ const AdminPanel = ({
           body: JSON.stringify({ [field]: parseFloat(newPrice) })
         });
         if (res.ok) {
-          alert("تم التحديث بنجاح");
+          showToast("تم التحديث بنجاح", "success");
           fetchAdminProducts(selectedSubId);
         }
       }
@@ -6662,7 +6782,7 @@ const AdminPanel = ({
         a.download = `database_export_${new Date().toISOString().split('T')[0]}.json`;
         a.click();
       } catch (e) {
-        alert("فشل تصدير البيانات");
+        showToast("فشل تصدير البيانات", "error");
       }
     };
 
@@ -6682,14 +6802,14 @@ const AdminPanel = ({
             body: JSON.stringify(data)
           });
           if (res.ok) {
-            alert("تم استيراد البيانات بنجاح! سيتم إعادة تحميل الصفحة.");
+            showToast("تم استيراد البيانات بنجاح! سيتم إعادة تحميل الصفحة.", "success");
             window.location.reload();
           } else {
             const err = await res.json();
-            alert(`فشل الاستيراد: ${err.error}`);
+            showToast(`فشل الاستيراد: ${err.error}`, "info");
           }
         } catch (err) {
-          alert("ملف غير صالح");
+          showToast("ملف غير صالح", "info");
         }
       };
       reader.readAsText(file);
@@ -6699,7 +6819,7 @@ const AdminPanel = ({
       if (!confirm("هل أنت متأكد من مسح كافة بيانات الموقع؟ لا يمكن التراجع عن هذه الخطوة.")) return;
       const res = await adminFetch("/api/admin/clear-db", { method: "POST" });
       if (res.ok) {
-        alert("تم مسح قاعدة البيانات بنجاح");
+        showToast("تم مسح قاعدة البيانات بنجاح", "success");
         window.location.reload();
       }
     };
@@ -6727,10 +6847,10 @@ const AdminPanel = ({
       if (res.ok) {
         setNewVoucher({ code: "", amount: "", max_uses: "1" });
         fetchAdminVouchers();
-        alert("تم إنشاء الكود بنجاح");
+        showToast("تم إنشاء الكود بنجاح", "success");
       } else {
         const data = await res.json();
-        alert(data.error || "فشل إنشاء الكود");
+        showToast(data.error || "فشل إنشاء الكود", "error");
       }
     };
 
@@ -6739,7 +6859,7 @@ const AdminPanel = ({
       const res = await adminFetch(`/api/admin/vouchers/${id}`, { method: "DELETE" });
       if (res.ok) {
         fetchAdminVouchers();
-        alert("تم حذف الكود");
+        showToast("تم حذف الكود", "success");
       }
     };
 
@@ -6764,7 +6884,7 @@ const AdminPanel = ({
         body: JSON.stringify({ key, value })
       });
       if (res.ok) {
-        alert("تم تحديث الإعداد بنجاح");
+        showToast("تم تحديث الإعداد بنجاح", "success");
         fetchAdminSettings();
         // تحديث siteSettings في الـ App الرئيسي لتنعكس التغييرات فوراً
         fetch("/api/settings").then(r => r.json()).then((data: any[]) => setSiteSettings(data)).catch(() => {});
@@ -6781,12 +6901,12 @@ const AdminPanel = ({
           for (const [table, status] of Object.entries(data.details || {})) {
             msg += `${table}: ${status}\n`;
           }
-          alert(msg);
+          showToast(msg, "info");
         } else {
-          alert(`فشل المزامنة: ${data.error}`);
+          showToast(`فشل المزامنة: ${data.error}`, "info");
         }
       } catch (e) {
-        alert("خطأ في الاتصال بالسيرفر");
+        showToast("خطأ في الاتصال بالسيرفر", "error");
       }
     };
 
@@ -6804,7 +6924,7 @@ const AdminPanel = ({
       });
       if (res.ok) {
         fetchAdminUsers();
-        alert("تم تحديث حالة VIP");
+        showToast("تم تحديث حالة VIP", "success");
       }
     };
 
@@ -6814,12 +6934,12 @@ const AdminPanel = ({
         const res = await adminFetch(`/api/admin/users/${userId}`, { method: "DELETE" });
         const data = await res.json();
         if (res.ok) {
-          alert("✅ تم حذف المستخدم بنجاح");
+          showToast("✅ تم حذف المستخدم بنجاح", "success");
           fetchAdminUsers();
         } else {
-          alert("❌ " + (data.error || "فشل الحذف"));
+          showToast("❌ " + (data.error || "فشل الحذف", "error"));
         }
-      } catch (e) { alert("خطأ في الاتصال"); }
+      } catch (e) { showToast("خطأ في الاتصال", "error"); }
     };
 
     const handleBlockUser = async (userId: number) => {
@@ -6833,12 +6953,12 @@ const AdminPanel = ({
         });
         const data = await res.json();
         if (res.ok) {
-          alert(`✅ تم حظر المستخدم لمدة ${mins} دقيقة`);
+          showToast(`✅ تم حظر المستخدم لمدة ${mins} دقيقة`, "info");
           fetchAdminUsers();
         } else {
-          alert("❌ " + (data.error || "فشل الحظر"));
+          showToast("❌ " + (data.error || "فشل الحظر", "error"));
         }
-      } catch (e) { alert("خطأ في الاتصال"); }
+      } catch (e) { showToast("خطأ في الاتصال", "error"); }
     };
 
     const handleSendNotification = async (userId: number | null, title: string, body: string) => {
@@ -6850,11 +6970,11 @@ const AdminPanel = ({
         });
         const data = await res.json();
         if (res.ok) {
-          alert(userId ? "✅ تم إرسال الإشعار للمستخدم" : `✅ تم الإرسال لـ ${data.sent || "الكل"} مستخدم`);
+          showToast(userId ? "✅ تم إرسال الإشعار للمستخدم" : `✅ تم الإرسال لـ ${data.sent || "الكل"} مستخدم`, "success");
         } else {
-          alert("❌ " + (data.error || "فشل الإرسال"));
+          showToast("❌ " + (data.error || "فشل الإرسال", "error"));
         }
-      } catch (e) { alert("خطأ في الاتصال"); }
+      } catch (e) { showToast("خطأ في الاتصال", "error"); }
     };
 
     const handleAddOffer = async () => {
@@ -6866,7 +6986,7 @@ const AdminPanel = ({
       if (res.ok) {
         setNewOffer({ title: "", description: "", image_url: "" });
         fetchOffers();
-        alert("تمت إضافة العرض");
+        showToast("تمت إضافة العرض", "info");
       }
     };
 
@@ -6911,12 +7031,12 @@ const AdminPanel = ({
       setNewCategory({ name: "", image_url: "", special_id: "" });
       fetchCategories();
       fetchCategories();
-        alert("✅ تمت إضافة القسم الرئيسي بنجاح");
+        showToast("✅ تمت إضافة القسم الرئيسي بنجاح", "success");
     };
 
     const handleAddSubcategory = async () => {
-      if (!newSubcategory.name) return alert("يرجى إدخال اسم القسم الفرعي");
-      if (!newSubcategory.category_special_id) return alert("يرجى إدخال رقم القسم الرئيسي الخاص");
+      if (!newSubcategory.name) return showToast("يرجى إدخال اسم القسم الفرعي", "error");
+      if (!newSubcategory.category_special_id) return showToast("يرجى إدخال رقم القسم الرئيسي الخاص", "error");
       const res = await adminFetch("/api/admin/subcategories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -6927,9 +7047,9 @@ const AdminPanel = ({
         setNewSubcategory({ category_special_id: "", name: "", image_url: "", special_id: "" });
         fetchSubcategories();
         fetchCategories();
-        alert("✅ تمت إضافة القسم الفرعي بنجاح");
+        showToast("✅ تمت إضافة القسم الفرعي بنجاح", "success");
       } else {
-        alert("❌ " + (data.error || "خطأ في الإضافة"));
+        showToast("❌ " + (data.error || "خطأ في الإضافة", "error"));
       }
     };
 
@@ -6955,16 +7075,16 @@ const AdminPanel = ({
           price_per_unit: "",
           external_id: ""
         });
-        alert("تمت إضافة المنتج");
+        showToast("تمت إضافة المنتج", "info");
       } else {
         const data = await res.json();
-        alert(data.error || "خطأ في الإضافة");
+        showToast(data.error || "خطأ في الإضافة", "error");
       }
     };
 
     const handleAddSubSubCategory = async () => {
-      if (!newSubSubCategory.name) return alert("يرجى إدخال اسم القسم الفرعي الفرعي");
-      if (!newSubSubCategory.subcategory_special_id) return alert("يرجى إدخال رقم القسم الفرعي الخاص");
+      if (!newSubSubCategory.name) return showToast("يرجى إدخال اسم القسم الفرعي الفرعي", "error");
+      if (!newSubSubCategory.subcategory_special_id) return showToast("يرجى إدخال رقم القسم الفرعي الخاص", "error");
       const res = await adminFetch("/api/admin/sub-sub-categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -6975,9 +7095,9 @@ const AdminPanel = ({
         setNewSubSubCategory({ subcategory_special_id: "", name: "", image_url: "", special_id: "" });
         fetchSubSubCategories();
         fetchSubcategories();
-        alert("✅ تمت إضافة القسم الفرعي الفرعي بنجاح");
+        showToast("✅ تمت إضافة القسم الفرعي الفرعي بنجاح", "success");
       } else {
-        alert("❌ " + (data.error || "خطأ في الإضافة"));
+        showToast("❌ " + (data.error || "خطأ في الإضافة", "error"));
       }
     };
 
@@ -6990,10 +7110,10 @@ const AdminPanel = ({
       if (res.ok) {
         setNewPaymentMethod({ name: "", image_url: "", wallet_address: "", min_amount: "", instructions: "" });
         fetchPaymentMethods();
-        alert("تمت إضافة طريقة الدفع");
+        showToast("تمت إضافة طريقة الدفع", "info");
       } else {
         const data = await res.json();
-        alert(data.error || "خطأ في الإضافة");
+        showToast(data.error || "خطأ في الإضافة", "error");
       }
     };
 
@@ -7006,9 +7126,9 @@ const AdminPanel = ({
       if (res.ok) {
         setNewBanner({ image_url: "" });
         fetchBanners();
-        alert("تمت إضافة الصورة المتحركة");
+        showToast("تمت إضافة الصورة المتحركة", "info");
       } else {
-        alert("خطأ في الإضافة");
+        showToast("خطأ في الإضافة", "error");
       }
     };
 
@@ -7024,10 +7144,10 @@ const AdminPanel = ({
         if (type === 'payment-methods') fetchPaymentMethods();
         if (type === 'banners') fetchBanners();
         if (type === 'offers') fetchOffers();
-        alert(result.message || "✅ تم الحذف بنجاح");
+        showToast(result.message || "✅ تم الحذف بنجاح", "success");
       } else {
         const errData = result;
-        alert("❌ " + (errData.error || "فشل الحذف"));
+        showToast("❌ " + (errData.error || "فشل الحذف", "error"));
       }
     };
 
@@ -7039,10 +7159,10 @@ const AdminPanel = ({
       });
       if (res.ok) {
         setManualTopup({ userId: "", amount: "" });
-        alert("تم شحن الرصيد بنجاح");
+        showToast("تم شحن الرصيد بنجاح", "success");
       } else {
         const data = await res.json();
-        alert(data.error || "خطأ في الشحن");
+        showToast(data.error || "خطأ في الشحن", "error");
       }
     };
 
@@ -7314,14 +7434,14 @@ const AdminPanel = ({
                             const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, { method: "POST", body: formData });
                             const data = await res.json();
                             if (data.success) setNewProduct(p => ({...p, image_url: data.data.url}));
-                            else alert("فشل رفع الصورة");
-                          } catch { alert("خطأ في رفع الصورة"); }
+                            else showToast("فشل رفع الصورة", "error");
+                          } catch { showToast("خطأ في رفع الصورة", "error"); }
                         }}/>
                       </label>
                     </div>
                     {newProduct.image_url && (
                       <div className="mt-2 flex items-center gap-2">
-                        <img src={newProduct.image_url} className="w-12 h-12 object-cover rounded-lg border border-gray-100" referrerPolicy="no-referrer"/>
+                        <img src={newProduct.image_url} className="w-12 h-12 object-cover rounded-lg border border-gray-100" referrerPolicy="no-referrer"/> loading="lazy"
                         <button onClick={() => setNewProduct(p => ({...p, image_url: ""}))} className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded-lg">حذف</button>
                       </div>
                     )}
@@ -7360,8 +7480,8 @@ const AdminPanel = ({
                   </div>
                   <button
                     onClick={async () => {
-                      if (!newProduct.name) return alert("يرجى إدخال اسم المنتج");
-                      if (!newProduct.subcategory_special_id) return alert("يرجى اختيار القسم الفرعي");
+                      if (!newProduct.name) return showToast("يرجى إدخال اسم المنتج", "error");
+                      if (!newProduct.subcategory_special_id) return showToast("يرجى اختيار القسم الفرعي", "error");
                       await handleAddProduct();
                       setActiveSubMenu(null);
                     }}
@@ -7406,19 +7526,19 @@ const AdminPanel = ({
                           const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, { method: "POST", body: formData });
                           const data = await res.json();
                           if (data.success) setNewBanner({ image_url: data.data.url });
-                          else alert("فشل رفع الصورة");
-                        } catch { alert("خطأ في رفع الصورة"); }
+                          else showToast("فشل رفع الصورة", "error");
+                        } catch { showToast("خطأ في رفع الصورة", "error"); }
                       }}/>
                     </label>
                   </div>
                   {newBanner.image_url && (
                     <div className="mt-1">
-                      <img src={newBanner.image_url} className="w-full h-36 object-cover rounded-xl border border-gray-100" referrerPolicy="no-referrer"/>
+                      <img src={newBanner.image_url} className="w-full h-36 object-cover rounded-xl border border-gray-100" referrerPolicy="no-referrer"/> loading="lazy"
                     </div>
                   )}
                   <button
                     onClick={async () => {
-                      if (!newBanner.image_url) return alert("يرجى إضافة صورة البانر");
+                      if (!newBanner.image_url) return showToast("يرجى إضافة صورة البانر", "error");
                       await handleAddBanner();
                       setActiveSubMenu(null);
                     }}
@@ -7463,13 +7583,13 @@ const AdminPanel = ({
                           const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, { method: "POST", body: formData });
                           const data = await res.json();
                           if (data.success) setNewOffer(o => ({...o, image_url: data.data.url}));
-                          else alert("فشل رفع الصورة");
-                        } catch { alert("خطأ في رفع الصورة"); }
+                          else showToast("فشل رفع الصورة", "error");
+                        } catch { showToast("خطأ في رفع الصورة", "error"); }
                       }}/>
                     </label>
                   </div>
                   {newOffer.image_url && (
-                    <img src={newOffer.image_url} className="w-full h-36 object-cover rounded-xl border border-gray-100" referrerPolicy="no-referrer"/>
+                    <img src={newOffer.image_url} className="w-full h-36 object-cover rounded-xl border border-gray-100" referrerPolicy="no-referrer"/> loading="lazy"
                   )}
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block">اسم العرض <span className="text-red-400">*</span></label>
@@ -7493,7 +7613,7 @@ const AdminPanel = ({
                   </div>
                   <button
                     onClick={async () => {
-                      if (!newOffer.title) return alert("يرجى إدخال اسم العرض");
+                      if (!newOffer.title) return showToast("يرجى إدخال اسم العرض", "error");
                       await handleAddOffer();
                       setActiveSubMenu(null);
                     }}
@@ -7653,7 +7773,7 @@ const AdminPanel = ({
                         await handleUpdateSetting('reward_goals', JSON.stringify(updatedGoals));
                         setEditingGoal(null);
                         setSavingReward(false);
-                        alert("✅ تم حفظ الهدف بنجاح");
+                        showToast("✅ تم حفظ الهدف بنجاح", "success");
                       }} className="flex-1 bg-yellow-600 text-white py-3 rounded-xl text-sm font-bold disabled:opacity-50">
                         {savingReward ? "جاري الحفظ..." : "حفظ التعديلات"}
                       </button>
@@ -7722,6 +7842,7 @@ const AdminPanel = ({
 
   return (
     <div className="min-h-screen bg-gray-50 text-right" dir="rtl">
+      <ToastContainer />
       {!(view.type === "chat" || (isAdmin && adminTab === "chat" && selectedChatUser)) && <Header />}
       <Drawer />
       <NotificationPanel />
@@ -7862,9 +7983,9 @@ const AdminPanel = ({
                   <button 
                     onClick={() => {
                       navigator.clipboard.writeText(linkingModal.code);
-                      alert("تم نسخ الكود");
+                      showToast("تم نسخ الكود", "success");
                     }}
-                    className="absolute -top-2 -right-2 bg-blue-600 text-white p-2 rounded-xl shadow-lg hover:bg-blue-700 transition-colors"
+                    className="absolute -top-2 -right-2 text-white p-2 rounded-xl shadow-lg transition-colors" style={{backgroundColor:"#B00000"}}
                     title="نسخ الكود"
                   >
                     <Copy size={18} />
