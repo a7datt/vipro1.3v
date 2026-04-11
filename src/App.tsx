@@ -3348,74 +3348,21 @@ export default function App() {
   };
 
   const ProfileView = () => {
-    const [uploading, setUploading] = useState(false);
-
-    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      setUploading(true);
-      try {
-        const formData = new FormData();
-        formData.append("image", file);
-        const imgbbKey = (import.meta as any).env.VITE_IMGBB_API_KEY || "97ffbf56fe1a203445531d664cd4b928";
-        const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, { method: "POST", body: formData });
-        const data = await res.json();
-        if (data.success) {
-          const token = localStorage.getItem("authToken") || "";
-          const updateRes = await fetch(`/api/user/${user?.id}/avatar`, {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${token}`
-            },
-            body: JSON.stringify({ avatar_url: data.data.url })
-          });
-          if (updateRes.ok) { fetchUser(user!.id); showToast("✅ تم تحديث الصورة الشخصية بنجاح", 'success'); }
-          else { const err = await updateRes.json(); showToast("فشل التحديث: " + (err.error || "", 'error')); }
-        } else { showToast("فشل رفع الصورة على الخادم", 'error'); }
-      } catch { showToast("فشل رفع الصورة", 'error'); } finally { setUploading(false); }
-    };
-
     return (
-      <div className="px-4 space-y-5 pb-20">
+      <div className="px-4 space-y-4 pb-20">
 
-        {/* بطاقة الملف الشخصي */}
-        <div className={`bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col items-center text-center space-y-3 ${user?.is_vip ? 'vip-card-glow border-amber-200 shadow-amber-50' : ''}`}>
-          
-          {/* زر معلومات الحساب */}
-          <div className="w-full flex justify-end -mb-1">
-            <button
-              onClick={() => setView({ type: "profile_details" })}
-              className="p-2 bg-gray-100 hover:bg-brand-light text-gray-500 hover:text-brand rounded-xl transition-all active:scale-90"
-              title="معلومات الحساب التفصيلية"
-            >
-              <Pencil size={16} />
-            </button>
+        {/* ── الصورة الشخصية (بدون + وبدون صندوق) ── */}
+        <div className="flex flex-col items-center pt-6 pb-2">
+          <div className={`w-24 h-24 ${theme.bgLight} rounded-full flex items-center justify-center ${theme.icon} border-4 border-white shadow-lg ${theme.shadow} overflow-hidden ${user?.is_vip ? 'vip-glow' : ''} ${user?.stats?.frame ? `frame-${user.stats.frame}` : ''}`}>
+            {user?.avatar_url ? (
+              <img loading="lazy" src={user.avatar_url} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            ) : <User size={48} />}
           </div>
 
-          {/* الصورة الشخصية */}
-          <div className="relative">
-            <div className={`w-24 h-24 ${theme.bgLight} rounded-full flex items-center justify-center ${theme.icon} border-4 border-white shadow-lg ${theme.shadow} overflow-hidden ${user?.is_vip ? 'vip-glow' : ''} ${user?.stats?.frame ? `frame-${user.stats.frame}` : ''}`}>
-              {user?.avatar_url ? (
-                <img loading="lazy" src={user.avatar_url} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-              ) : <User size={48} />}
-              {uploading && (
-                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                  <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                </div>
-              )}
-            </div>
-            <label className="absolute bottom-0 right-0 bg-brand text-white p-2 rounded-full cursor-pointer shadow-lg hover:opacity-90 transition-colors">
-              <Plus size={16} />
-              <input type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} disabled={uploading} />
-            </label>
-          </div>
-
-          {/* الاسم والبيانات */}
-          <div>
-            <div className="flex items-center justify-center gap-2 flex-wrap">
-              <h2 className={`text-xl font-bold text-gray-800 ${user?.is_vip ? 'vip-text-glow' : ''}`}>{user?.name || "زائر"}</h2>
-              {user?.is_vip && <span className="vip-badge"><Crown size={10} />VIP</span>}
+          {/* رقم الدخول + الشارة */}
+          {user?.id && (
+            <div className="flex items-center gap-2 mt-3">
+              <span className="text-sm font-bold text-brand">#{user.id}</span>
               {user?.stats?.profile_badge && (
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold badge-${user.stats.profile_badge} inline-flex items-center gap-1`}>
                   {user.stats.profile_badge === 'bronze' && <Award size={10} />}
@@ -3425,89 +3372,133 @@ export default function App() {
                   {user.stats.profile_badge === 'gold' && <Crown size={10} />}
                   {user.stats.profile_badge === 'diamond' && <Star size={10} />}
                   {user.stats.profile_badge === 'legendary' && <Crown size={10} />}
+                  {user.stats.profile_badge}
                 </span>
               )}
-            </div>
-            <p className="text-gray-400 text-sm mt-0.5">{user?.email || "قم بتسجيل الدخول للوصول لكافة الميزات"}</p>
-            {user?.id && <p className="text-xs text-brand font-bold mt-1">رقم الدخول: #{user.id}</p>}
-            {user?.stats?.user_title && (
-              <p className="text-xs font-bold mt-1 text-purple-600 flex items-center justify-center gap-1"><Award size={11} /> {user.stats.user_title}</p>
-            )}
-          </div>
-
-          {/* أزرار الإجراءات السريعة - 3 أزرار في صف */}
-          {user && (
-            <div className="w-full grid grid-cols-3 gap-2 pt-1">
-              {user.telegram_chat_id ? (
-                <button onClick={handleUnlinkTelegram} className="bg-red-50 text-red-600 p-3 rounded-2xl border border-red-100 flex flex-col items-center gap-1 transition-all active:scale-95">
-                  <LogOut size={18} />
-                  <span className="text-[10px] font-bold">إلغاء تليجرام</span>
-                </button>
-              ) : (
-                <button onClick={handleGenerateLinkingCode} className="bg-blue-50 text-blue-600 p-3 rounded-2xl border border-blue-100 flex flex-col items-center gap-1 transition-all active:scale-95">
-                  <MessageSquare size={18} />
-                  <span className="text-[10px] font-bold">ربط تليجرام</span>
-                </button>
-              )}
-              <button onClick={() => setView({ type: "referral" })} className="bg-brand-light text-brand p-3 rounded-2xl border border-brand-soft flex flex-col items-center gap-1 transition-all active:scale-95">
-                <Plus size={18} />
-                <span className="text-[10px] font-bold">الإحالة</span>
-              </button>
-              <button onClick={() => setView({ type: "payments" })} className="bg-green-50 text-green-600 p-3 rounded-2xl border border-green-100 flex flex-col items-center gap-1 transition-all active:scale-95">
-                <History size={18} />
-                <span className="text-[10px] font-bold">دفعاتي</span>
-              </button>
+              {user?.is_vip && <span className="vip-badge"><Crown size={10} />VIP</span>}
             </div>
           )}
-          {/* زر الترتيب */}
-          {user && (
-            <button onClick={() => setView({ type: "leaderboard" })} className="w-full bg-gradient-to-r from-amber-50 to-yellow-50 text-amber-700 py-2.5 rounded-2xl border border-amber-100 flex items-center justify-center gap-2 transition-all active:scale-95 font-bold text-sm">
-              <Trophy size={18} className="text-amber-500" />
-              الترتيب
-            </button>
+
+          {/* اللقب */}
+          {user?.stats?.user_title && (
+            <p className="text-xs font-bold mt-1.5 text-purple-600 flex items-center gap-1">
+              <Award size={11} /> {user.stats.user_title}
+            </p>
+          )}
+          {!user && (
+            <p className="text-gray-400 text-sm mt-2">قم بتسجيل الدخول للوصول لكافة الميزات</p>
           )}
         </div>
 
-        {/* حالة تليجرام */}
+        {/* ── 3 أزرار: ربط تليجرام | الإحالة | دفعاتي ── */}
         {user && (
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${user?.telegram_chat_id ? 'bg-blue-100' : 'bg-orange-100'}`}>
-                <MessageSquare size={16} className={user?.telegram_chat_id ? 'text-blue-600' : 'text-orange-500'} />
-              </div>
-              <div>
-                <p className={`text-sm font-bold ${user?.telegram_chat_id ? 'text-blue-800' : 'text-orange-700'}`}>
-                  {user?.telegram_chat_id ? 'تليجرام مرتبط' : 'تليجرام غير مرتبط'}
-                </p>
-                <p className={`text-[10px] ${user?.telegram_chat_id ? 'text-blue-400' : 'text-orange-400'}`}>
-                  {user?.telegram_chat_id ? 'حسابك مؤمن بالبوت' : 'اربط للحصول على إشعارات'}
-                </p>
-              </div>
-            </div>
-            {user?.telegram_chat_id ? (
-              <button onClick={handleUnlinkTelegram} className="text-[10px] font-bold text-red-500 bg-red-50 px-3 py-1.5 rounded-xl border border-red-100">فك الربط</button>
+          <div className="grid grid-cols-3 gap-2">
+            {user.telegram_chat_id ? (
+              <button onClick={handleUnlinkTelegram} className="bg-blue-50 text-blue-600 p-3 rounded-2xl border border-blue-100 flex flex-col items-center gap-1 transition-all active:scale-95">
+                <MessageSquare size={18} />
+                <span className="text-[10px] font-bold text-center leading-tight">تليجرام<br/>مرتبط ✓</span>
+              </button>
             ) : (
-              <button onClick={handleGenerateLinkingCode} className="text-[10px] font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-200">ربط الآن</button>
+              <button onClick={handleGenerateLinkingCode} className="bg-blue-50 text-blue-600 p-3 rounded-2xl border border-blue-100 flex flex-col items-center gap-1 transition-all active:scale-95">
+                <MessageSquare size={18} />
+                <span className="text-[10px] font-bold text-center leading-tight">ربط<br/>تليجرام</span>
+              </button>
             )}
+            <button onClick={() => setView({ type: "referral" })} className="bg-brand-light text-brand p-3 rounded-2xl border border-brand-soft flex flex-col items-center gap-1 transition-all active:scale-95">
+              <Plus size={18} />
+              <span className="text-[10px] font-bold">الإحالة</span>
+            </button>
+            <button onClick={() => setView({ type: "payments" })} className="bg-green-50 text-green-600 p-3 rounded-2xl border border-green-100 flex flex-col items-center gap-1 transition-all active:scale-95">
+              <History size={18} />
+              <span className="text-[10px] font-bold">دفعاتي</span>
+            </button>
           </div>
         )}
 
-        {/* نظام المكافآت */}
-        {user && user.stats && (
-          <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 space-y-4">
-            <div className="flex items-center justify-between">
+        {/* ── زر نظام المكافآت والترتيب ── */}
+        {user && (
+          <button
+            onClick={() => setView({ type: "rewards_leaderboard" })}
+            className="w-full bg-gradient-to-r from-amber-50 to-yellow-50 text-amber-700 py-3.5 rounded-2xl border border-amber-100 flex items-center justify-center gap-2 transition-all active:scale-95 font-bold text-sm shadow-sm"
+          >
+            <Trophy size={18} className="text-amber-500" />
+            نظام المكافآت والترتيب
+            <ChevronLeft size={16} className="text-amber-400 mr-1" />
+          </button>
+        )}
+
+        {/* ── قائمة الإجراءات ── */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50 overflow-hidden">
+          {/* 1. تعديل الملف الشخصي */}
+          <ProfileItem icon={<User size={20} />} label="تعديل الملف الشخصي" onClick={() => setView({ type: "edit_profile" })} />
+
+          {/* 2. الإعدادات */}
+          <ProfileItem icon={<Settings size={20} />} label="الإعدادات" onClick={() => setView({ type: "profile_settings" })} />
+
+          {/* 3. الدعم الفني */}
+          <ProfileItem icon={<MessageSquare size={20} />} label="الدعم الفني" onClick={() => setView({ type: "chat" })} className="text-brand relative" badge={user?.unread_support_count > 0 ? user.unread_support_count : undefined} />
+
+          {/* 4. تسجيل الخروج / تسجيل الدخول */}
+          {user ? (
+            <ProfileItem icon={<LogOut size={20} />} label="تسجيل الخروج" onClick={handleLogout} className="text-red-500" />
+          ) : (
+            <ProfileItem icon={<ArrowRight size={20} />} label="تسجيل الدخول" onClick={() => setView({ type: "login" })} />
+          )}
+        </div>
+
+        {/* Syrbit Copyright */}
+        <div className="flex justify-center py-4">
+          <a href="https://chat.whatsapp.com/DELXtdEh9ua5edFTupESNU" target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-[10px] text-gray-400 hover:text-purple-500 transition-colors">
+            <span>برمجة شركة</span>
+            <span className="font-black text-purple-500">Syrbit</span>
+            <ExternalLink size={9} />
+          </a>
+        </div>
+      </div>
+    );
+  };
+
+  /* ── صفحة نظام المكافآت والترتيب ── */
+  const RewardsLeaderboardView = () => {
+    const [activeSubTab, setActiveSubTab] = useState<"rewards"|"leaderboard">("rewards");
+    return (
+      <div className="pb-20">
+        {/* رأس الصفحة */}
+        <div className="px-4 flex items-center gap-2 pt-4 mb-4">
+          <button onClick={navigateBack} className="p-2 bg-gray-100 rounded-full">
+            <ArrowRight size={20} className="text-gray-600" />
+          </button>
+          <h2 className="text-xl font-bold text-gray-800">المكافآت والترتيب</h2>
+        </div>
+
+        {/* تبويبان علويان */}
+        <div className="px-4 flex gap-2 mb-4">
+          <button
+            onClick={() => setActiveSubTab("rewards")}
+            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all ${activeSubTab === "rewards" ? "bg-brand text-white shadow-sm" : "bg-gray-100 text-gray-500"}`}
+          >
+            🎁 نظام المكافآت
+          </button>
+          <button
+            onClick={() => setActiveSubTab("leaderboard")}
+            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all ${activeSubTab === "leaderboard" ? "bg-amber-500 text-white shadow-sm" : "bg-gray-100 text-gray-500"}`}
+          >
+            🏆 الترتيب
+          </button>
+        </div>
+
+        {/* محتوى نظام المكافآت */}
+        {activeSubTab === "rewards" && user && user.stats && (
+          <div className="px-4 space-y-4">
+            <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-2">
                 <Star size={18} className="text-amber-500" />
-                <h3 className="font-bold text-gray-800">نظام المكافآت</h3>
+                <h3 className="font-bold text-gray-800">مستوى الشحن</h3>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold bg-amber-50 text-amber-600 px-2 py-1 rounded-lg">
-                  {user.stats.total_recharge_sum.toFixed(2)} $
-                </span>
-                <button onClick={() => setShowAllRewards(!showAllRewards)} className="p-1 hover:bg-gray-100 rounded-lg transition-colors text-gray-400">
-                  {showAllRewards ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                </button>
-              </div>
+              <span className="text-[10px] font-bold bg-amber-50 text-amber-600 px-2 py-1 rounded-lg">
+                {user.stats.total_recharge_sum.toFixed(2)} $
+              </span>
             </div>
             <div className="space-y-4">
               {REWARD_GOALS.map((goal, index) => {
@@ -3516,7 +3507,6 @@ export default function App() {
                 const isCurrent = user.stats!.claimed_reward_index === index - 1;
                 const prevTarget = index === 0 ? 0 : REWARD_GOALS[index - 1].target;
                 const progress = Math.min(100, Math.max(0, ((user.stats!.total_recharge_sum - prevTarget) / (goal.target - prevTarget)) * 100));
-                if (!showAllRewards && !isCurrent) return null;
                 return (
                   <div key={goal.id} className={`space-y-3 p-4 rounded-2xl border transition-all ${isClaimed ? 'bg-brand-light border-brand-soft' : isCurrent ? 'bg-amber-50 border-amber-100 shadow-sm' : 'bg-gray-50 border-gray-100 opacity-40'}`}>
                     <div className="flex justify-between items-start gap-2">
@@ -3554,9 +3544,7 @@ export default function App() {
                                   if (resData.stats) { setUser(prev => prev ? { ...prev, stats: resData.stats } : prev); }
                                   fetchUser(user.id);
                                 } else { showToast(resData.error || "فشل استلام المكافأة", 'error'); }
-                              } catch (error) { 
-  showToast("خطأ في الاتصال", 'error');
-                                }
+                              } catch { showToast("خطأ في الاتصال", 'error'); }
                             }}
                             className="bg-brand text-white px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm active:scale-95 transition-all whitespace-nowrap"
                           >استلام 🎁</button>
@@ -3582,37 +3570,32 @@ export default function App() {
           </div>
         )}
 
-        {/* قائمة الإجراءات */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50 overflow-hidden">
-          <ProfileItem icon={<User size={20} />} label="تعديل الملف الشخصي" onClick={() => setView({ type: "edit_profile" })} />
-          {!!user?.stats?.has_special_support && (
-            <ProfileItem icon={<ShieldCheck size={20} />} label="الدعم الخاص (الأولوية)" className="text-amber-600 bg-amber-50/50" onClick={() => showToast("لديك أولوية في الدعم الفني. تواصل معنا عبر الواتساب.", 'info')} />
-          )}
-          <ProfileItem icon={<Settings size={20} />} label="الإعدادات" onClick={() => setView({ type: "settings" })} />
-          <ProfileItem icon={<Clock size={20} />} label="سياسة الخصوصية" onClick={() => setView({ type: "privacy_policy" })} />
-          <ProfileItem icon={<MessageSquare size={20} />} label="الدعم الفني" onClick={() => setView({ type: "chat" })} className="text-brand relative" badge={user?.unread_support_count > 0 ? user.unread_support_count : undefined} />
-          {!!user?.stats?.custom_theme_color && (
-            <ProfileItem icon={<Palette size={20} />} label="تخصيص الثيم" onClick={() => setThemeModal({ isOpen: true, color: user.stats.custom_theme_color === 'any' ? '#10b981' : user.stats.custom_theme_color })} className="text-brand" />
-          )}
-          {user ? (
-            <ProfileItem icon={<LogOut size={20} />} label="تسجيل الخروج" onClick={handleLogout} className="text-red-500" />
-          ) : (
-            <ProfileItem icon={<ArrowRight size={20} />} label="تسجيل الدخول" onClick={() => setView({ type: "login" })} />
-          )}
-        </div>
-
-        {/* Syrbit Copyright */}
-        <div className="flex justify-center py-4">
-          <a href="https://chat.whatsapp.com/DELXtdEh9ua5edFTupESNU" target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-[10px] text-gray-400 hover:text-purple-500 transition-colors">
-            <span>برمجة شركة</span>
-            <span className="font-black text-purple-500">Syrbit</span>
-            <ExternalLink size={9} />
-          </a>
-        </div>
+        {/* محتوى الترتيب — نعيد استخدام LeaderboardView */}
+        {activeSubTab === "leaderboard" && <LeaderboardView />}
       </div>
     );
   };
+
+  /* ── صفحة الإعدادات الجديدة ── */
+  const ProfileSettingsView = () => (
+    <div className="px-4 space-y-4 pb-20">
+      <div className="flex items-center gap-2 pt-4 mb-2">
+        <button onClick={navigateBack} className="p-2 bg-gray-100 rounded-full">
+          <ArrowRight size={20} className="text-gray-600" />
+        </button>
+        <h2 className="text-xl font-bold text-gray-800">الإعدادات</h2>
+      </div>
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50 overflow-hidden">
+        <ProfileItem icon={<Clock size={20} />} label="سياسة الخصوصية" onClick={() => setView({ type: "privacy_policy" })} />
+        {!!user?.stats?.has_special_support && (
+          <ProfileItem icon={<ShieldCheck size={20} />} label="الدعم الخاص (الأولوية)" className="text-amber-600 bg-amber-50/50" onClick={() => showToast("لديك أولوية في الدعم الفني. تواصل معنا عبر الواتساب.", 'info')} />
+        )}
+        {!!user?.stats?.custom_theme_color && (
+          <ProfileItem icon={<Palette size={20} />} label="تخصيص الثيم" onClick={() => setThemeModal({ isOpen: true, color: user.stats.custom_theme_color === 'any' ? '#10b981' : user.stats.custom_theme_color })} className="text-brand" />
+        )}
+      </div>
+    </div>
+  );
 
     const ProfileItem = ({ icon, label, onClick, className = "", badge }: any) => (
     <button onClick={onClick} className={`w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors ${className}`}>
@@ -8098,12 +8081,14 @@ const AdminPanel = ({
                     {view.type === "main" && <ProfileView />}
                     {view.type === "profile_details" && <ProfileDetailsView />}
                     {view.type === "leaderboard" && <LeaderboardView />}
+                    {view.type === "rewards_leaderboard" && <RewardsLeaderboardView />}
                     {view.type === "payments" && <PaymentsView />}
                     {view.type === "edit_profile" && <EditProfileView />}
                     {view.type === "referral" && <ReferralView />}
                     {view.type === "privacy_policy" && <PrivacyPolicyView />}
                     {view.type === "chat" && <ChatView />}
                     {view.type === "settings" && <SettingsView />}
+                    {view.type === "profile_settings" && <ProfileSettingsView />}
                     {view.type === "success" && <SuccessView />}
                     {view.type === "login" && <LoginView />}
                     {view.type === "forgot_password" && <ForgotPasswordView />}
