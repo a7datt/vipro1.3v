@@ -449,6 +449,233 @@ const CustomDialogContainer = () => {
 };
 // ===================== END CUSTOM DIALOG SYSTEM =====================
 
+// ===================== WALLET CHARGE VIEW (مستقل عن App لمنع إعادة mount) =====================
+interface WalletChargeViewProps {
+  selectedPaymentMethod: PaymentMethod | null;
+  setSelectedPaymentMethod: (m: PaymentMethod | null) => void;
+  walletAmount: string; setWalletAmount: (v: string) => void;
+  walletNote: string; setWalletNote: (v: string) => void;
+  walletReceiptUrl: string; setWalletReceiptUrl: (v: string) => void;
+  walletUploading: boolean; setWalletUploading: (v: boolean) => void;
+  walletTxNumber: string; setWalletTxNumber: (v: string) => void;
+  walletLoading: boolean; setWalletLoading: (v: boolean) => void;
+  user: any;
+  paymentMethods: PaymentMethod[];
+  showToast: (msg: string, type: 'success'|'error'|'info') => void;
+  setView: (v: any) => void;
+  fetchUser: (id: number) => void;
+  fetchTransactions: () => void;
+}
+
+const WalletChargeView: React.FC<WalletChargeViewProps> = ({
+  selectedPaymentMethod, setSelectedPaymentMethod,
+  walletAmount, setWalletAmount,
+  walletNote, setWalletNote,
+  walletReceiptUrl, setWalletReceiptUrl,
+  walletUploading, setWalletUploading,
+  walletTxNumber, setWalletTxNumber,
+  walletLoading, setWalletLoading,
+  user, paymentMethods, showToast, setView, fetchUser, fetchTransactions,
+}) => {
+  const selectedMethod = selectedPaymentMethod;
+  const setSelectedMethod = (m: PaymentMethod | null) => {
+    setSelectedPaymentMethod(m);
+    if (!m) {
+      setWalletAmount(""); setWalletNote(""); setWalletReceiptUrl(""); setWalletTxNumber("");
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setWalletUploading(true);
+    const formData = new FormData();
+    formData.append("image", file);
+    try {
+      const imgbbKey = (import.meta as any).env.VITE_IMGBB_API_KEY || "97ffbf56fe1a203445531d664cd4b928";
+      const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, { method: "POST", body: formData });
+      const data = await res.json();
+      if (data.success) { setWalletReceiptUrl(data.data.url); }
+      else { showToast("فشل رفع الصورة: " + (data.error?.message || "خطأ غير معروف"), 'error'); }
+    } catch { showToast("خطأ في الاتصال بخادم الصور", 'error'); }
+    finally { setWalletUploading(false); }
+  };
+
+  const clearReceipt = (e: React.MouseEvent) => { e.stopPropagation(); e.preventDefault(); setWalletReceiptUrl(""); };
+
+  const handleAutoTopUp = async () => {
+    if (!user || !selectedMethod || !walletAmount || !walletTxNumber) {
+      showToast("يرجى إدخال المبلغ ورقم العملية", 'error'); return;
+    }
+    setWalletLoading(true);
+    try {
+      const res = await fetch("/api/transactions/verify-auto", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("authToken") || ""}` },
+        body: JSON.stringify({ userId: user.id, paymentMethodId: selectedMethod.id, amount: parseFloat(walletAmount), txNumber: walletTxNumber.trim() })
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchUser(user.id); fetchTransactions();
+        const added = data.addedUsd ?? parseFloat(walletAmount);
+        const orig = data.originalAmount ? ` (${data.originalAmount} ${data.currency})` : "";
+        setView({ type: "success", data: `✅ تم شحن ${added.toFixed(4)}$${orig} بنجاح عبر ${selectedMethod.name}!` });
+      } else { showToast(data.error || "فشل التحقق", 'error'); }
+    } catch { showToast("فشل الاتصال بالخادم", 'error'); }
+    finally { setWalletLoading(false); }
+  };
+
+  const handleTopUp = async () => {
+    if (!user || !selectedMethod || !walletAmount || !walletReceiptUrl) {
+      showToast("يرجى إكمال جميع البيانات ورفع الإيصال", 'error'); return;
+    }
+    const numAmount = parseFloat(walletAmount);
+    if (numAmount < selectedMethod.min_amount) {
+      showToast(`أقل مبلغ للشحن عبر هذه الطريقة هو ${selectedMethod.min_amount} $`, 'error'); return;
+    }
+    setWalletLoading(true);
+    try {
+      const res = await fetch("/api/transactions/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("authToken") || ""}` },
+        body: JSON.stringify({ userId: user.id, paymentMethodId: selectedMethod.id, amount: numAmount, note: walletNote, receiptImageUrl: walletReceiptUrl })
+      });
+      const data = await res.json();
+      if (data.success) { setView({ type: "success", data: "تم إرسال طلب الشحن بنجاح، يرجى انتظار التحقق." }); fetchTransactions(); }
+      else { showToast(data.error || "فشل إرسال الطلب", 'error'); }
+    } catch (e) { showToast("فشل الاتصال بالخادم، يرجى المحاولة لاحقاً", 'error'); console.error(e); }
+    finally { setWalletLoading(false); }
+  };
+
+  if (selectedMethod) {
+    const isAuto = selectedMethod.method_type === 'syriatel' || selectedMethod.method_type === 'shamcash';
+    return (
+      <div className="px-4 space-y-6 pb-20">
+        <div className="flex items-center gap-2 mb-6">
+          <button onClick={() => setSelectedMethod(null)} className="p-2 bg-gray-100 rounded-full">
+            <ArrowRight size={20} className="text-gray-600" />
+          </button>
+          <h2 className="text-xl font-bold text-gray-800">شحن عبر {selectedMethod.name}</h2>
+        </div>
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-6">
+          {isAuto ? (
+            <>
+              <div className="bg-green-50 p-4 rounded-xl border border-green-100 text-center space-y-1">
+                <p className="text-green-700 font-bold text-sm">✅ شحن تلقائي فوري</p>
+                <p className="text-green-600 text-xs">يتم التحقق من العملية تلقائياً وإضافة الرصيد فوراً {"\n"}في حال كانت العملية بالليرة السورية سيتم تعبئة رصيد بـ1$ لكل 120 ل.س جديدو</p>
+              </div>
+              <div className="bg-brand-light p-4 rounded-xl border border-brand-soft text-center">
+                <p className="text-brand text-xs mb-1">{selectedMethod.method_type === 'syriatel' ? 'رقم سيريتل كاش' : 'عنوان شام كاش'}</p>
+                <p className="text-xl font-bold text-brand tracking-wider">{selectedMethod.wallet_address}</p>
+                {selectedMethod.min_amount > 0 && <p className="text-xs text-brand mt-2 font-bold">أقل مبلغ: {selectedMethod.min_amount} $</p>}
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-gray-700">اكتب قيمة المبلغ المرسل ان كان $ او ل.س </label>
+                  <input type="number" value={walletAmount} onChange={e => setWalletAmount(e.target.value)} placeholder="0.00"
+                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-gray-700">رقم العملية (Transaction ID)</label>
+                  <input type="text" value={walletTxNumber} onChange={e => setWalletTxNumber(e.target.value)}
+                    placeholder={selectedMethod.method_type === 'syriatel' ? 'مثال: 123456789' : 'مثال: 987654321'}
+                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand font-mono" />
+                  <p className="text-xs text-gray-400">أدخل رقم العملية كما يظهر في تطبيق {selectedMethod.name}</p>
+                </div>
+                <button disabled={walletLoading || !walletTxNumber || !walletAmount} onClick={handleAutoTopUp}
+                  className="w-full bg-brand text-white py-4 rounded-xl font-bold shadow-lg shadow-brand-soft disabled:opacity-50">
+                  {walletLoading ? "جاري التحقق..." : "تحقق وشحن فوراً"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="bg-brand-light p-4 rounded-xl border border-brand-soft text-center space-y-2">
+                <p className="text-brand text-xs font-semibold mb-1">رقم المحفظة / العنوان</p>
+                <div className="flex items-center justify-center gap-2 flex-wrap">
+                  <p className="text-sm font-bold text-brand tracking-wider break-all">{selectedMethod.wallet_address}</p>
+                  <button onClick={() => { navigator.clipboard.writeText(selectedMethod.wallet_address).then(() => showToast("تم نسخ عنوان المحفظة!", 'success')).catch(() => showToast("فشل النسخ", 'error')); }}
+                    className="flex items-center gap-1 bg-brand text-white text-[10px] font-bold px-2 py-1 rounded-lg shrink-0">
+                    <Copy size={11} /> نسخ
+                  </button>
+                </div>
+                <p className="text-[10px] text-brand/70 font-medium">طريقة الدفع: {selectedMethod.name}</p>
+                {selectedMethod.description && <p className="text-xs text-brand/60 font-light mt-1">{selectedMethod.description}</p>}
+                {selectedMethod.min_amount > 0 && <p className="text-xs text-brand mt-1 font-bold">أقل مبلغ: {selectedMethod.min_amount} $</p>}
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-gray-700">المبلغ المراد شحنه</label>
+                  <input type="number" value={walletAmount} onChange={e => setWalletAmount(e.target.value)} placeholder="0.00"
+                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-gray-700">ملاحظات إضافية</label>
+                  <textarea value={walletNote} onChange={e => setWalletNote(e.target.value)} placeholder="اختياري..."
+                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand h-24 resize-none" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-gray-700">إرفاق صورة الإيصال</label>
+                  <label className="w-full h-32 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-2 text-gray-400 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors relative overflow-hidden">
+                    {walletReceiptUrl ? (
+                      <>
+                        <img loading="lazy" src={walletReceiptUrl} className="w-full h-full object-cover" alt="Receipt" referrerPolicy="no-referrer" />
+                        <button onClick={clearReceipt} className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-colors z-10"><X size={16} /></button>
+                      </>
+                    ) : (
+                      <>
+                        <ImageIcon size={32} />
+                        <span className="text-xs">{walletUploading ? "جاري الرفع..." : "اضغط لرفع الصورة"}</span>
+                      </>
+                    )}
+                    <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={walletUploading} />
+                  </label>
+                </div>
+                <button disabled={walletLoading || walletUploading || !walletReceiptUrl} onClick={handleTopUp}
+                  className="w-full bg-brand text-white py-4 rounded-xl font-bold shadow-lg shadow-brand-soft disabled:opacity-50">
+                  {walletLoading ? "جاري الإرسال..." : "إرسال طلب التحقق"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 space-y-6 pb-20">
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">شحن الرصيد</h2>
+      <button onClick={() => setView({ type: "voucher_redeem" })}
+        className="w-full bg-gradient-to-r from-brand to-brand-soft p-6 rounded-2xl text-white shadow-lg shadow-brand-soft flex items-center justify-between mb-8">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center"><Ticket size={28} /></div>
+          <div className="text-right">
+            <h3 className="font-bold text-lg">استرداد كود رصيد</h3>
+            <p className="text-white/80 text-xs">اشحن رصيدك عبر الأكواد والقسائم</p>
+          </div>
+        </div>
+        <ChevronRight size={24} className="text-white/60" />
+      </button>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-bold text-gray-800">طرق الشحن المباشر</h3>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {paymentMethods.map(method => (
+          <button key={method.id} onClick={() => setSelectedMethod(method)}
+            className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col items-center gap-2 hover:border-brand-soft transition-colors">
+            <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden">
+              <img loading="lazy" src={method.image_url || "https://picsum.photos/seed/pay/100/100"} alt={method.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            </div>
+            <span className="font-bold text-gray-800 text-[10px] text-center">{method.name}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+// ===================== END WALLET CHARGE VIEW =====================
+
 export default function App() {
   const [activeTab, setActiveTab] = useState("home");
   const [user, setUser] = useState<UserData | null>(null);
@@ -525,13 +752,14 @@ export default function App() {
         setView({ type: "main" });
         return [];
       }
-      const newHistory = prev.slice(0, -1);
-      const prevView = newHistory[newHistory.length - 1];
-      // إذا كان المصدر هو most_purchased نرجع للصفحة الرئيسية مباشرة
-      if (prevView?.fromMostPurchased) {
+      const currentView = prev[prev.length - 1];
+      // إذا وصلنا للصفحة الحالية عبر most_purchased نرجع للرئيسية مباشرة
+      if (currentView?.fromMostPurchased) {
         setView({ type: "main" });
         return [];
       }
+      const newHistory = prev.slice(0, -1);
+      const prevView = newHistory[newHistory.length - 1];
       setView(prevView);
       return newHistory;
     });
@@ -2177,7 +2405,7 @@ export default function App() {
 
         {/* Sub-sub-categories */}
         {subSubCategories.length > 0 && (
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-3">
             {subSubCategories.map(ss => {
               const favKey = `sss_${ss.id}`;
               let lpTimer2: any = null;
@@ -2212,7 +2440,7 @@ export default function App() {
                       onContextMenu={e => e.preventDefault()}
                     />
                   </div>
-                  <span className="font-bold text-gray-700 text-[8px] text-center w-full px-0.5 py-1 leading-tight">{ss.name}</span>
+                  <span className="font-bold text-gray-700 text-[9px] text-center w-full px-1 py-1.5 leading-tight">{ss.name}</span>
                 </motion.button>
               );
             })}
@@ -2810,290 +3038,25 @@ export default function App() {
     );
   };
 
-  const WalletView = () => {
-    const selectedMethod = selectedPaymentMethod;
-    const setSelectedMethod = (m: PaymentMethod | null) => {
-      setSelectedPaymentMethod(m);
-      // إعادة تعيين الحقول عند تغيير طريقة الدفع
-      if (!m) {
-        setWalletAmount(""); setWalletNote(""); setWalletReceiptUrl(""); setWalletTxNumber("");
-      }
-    };
-    const amount = walletAmount;
-    const setAmount = setWalletAmount;
-    const note = walletNote;
-    const setNote = setWalletNote;
-    const loading = walletLoading;
-    const setLoading = setWalletLoading;
-    const receiptUrl = walletReceiptUrl;
-    const setReceiptUrl = setWalletReceiptUrl;
-    const uploading = walletUploading;
-    const setUploading = setWalletUploading;
-    const txNumber = walletTxNumber;
-    const setTxNumber = setWalletTxNumber;
+  const WalletView = () => (
+    <WalletChargeView
+      selectedPaymentMethod={selectedPaymentMethod}
+      setSelectedPaymentMethod={setSelectedPaymentMethod}
+      walletAmount={walletAmount} setWalletAmount={setWalletAmount}
+      walletNote={walletNote} setWalletNote={setWalletNote}
+      walletReceiptUrl={walletReceiptUrl} setWalletReceiptUrl={setWalletReceiptUrl}
+      walletUploading={walletUploading} setWalletUploading={setWalletUploading}
+      walletTxNumber={walletTxNumber} setWalletTxNumber={setWalletTxNumber}
+      walletLoading={walletLoading} setWalletLoading={setWalletLoading}
+      user={user}
+      paymentMethods={paymentMethods}
+      showToast={showToast}
+      setView={setView}
+      fetchUser={fetchUser}
+      fetchTransactions={fetchTransactions}
+    />
+  );
 
-    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      setUploading(true);
-      const formData = new FormData();
-      formData.append("image", file);
-
-      try {
-        const imgbbKey = (import.meta as any).env.VITE_IMGBB_API_KEY || "97ffbf56fe1a203445531d664cd4b928";
-        const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, {
-          method: "POST",
-          body: formData
-        });
-        const data = await res.json();
-        if (data.success) {
-          setReceiptUrl(data.data.url);
-        } else {
-          console.error("ImgBB Error:", data);
-          showToast("فشل رفع الصورة: " + (data.error?.message || "خطأ غير معروف"), 'error');
-        }
-      } catch (err) {
-        console.error("Upload Error:", err);
-        showToast("خطأ في الاتصال بخادم الصور", 'error');
-      } finally {
-        setUploading(false);
-      }
-    };
-
-    const clearReceipt = (e: React.MouseEvent) => {
-      e.stopPropagation();
-      e.preventDefault();
-      setReceiptUrl("");
-    };
-
-    const handleAutoTopUp = async () => {
-      if (!user || !selectedMethod || !amount || !txNumber) {
-        showToast("يرجى إدخال المبلغ ورقم العملية", 'error');
-        return;
-      }
-      setLoading(true);
-      try {
-        const res = await fetch("/api/transactions/verify-auto", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("authToken") || ""}` },
-          body: JSON.stringify({
-            userId: user.id,
-            paymentMethodId: selectedMethod.id,
-            amount: parseFloat(amount),
-            txNumber: txNumber.trim()
-          })
-        });
-        const data = await res.json();
-        if (data.success) {
-          fetchUser(user.id);
-          fetchTransactions();
-          const added = data.addedUsd ?? parseFloat(amount);
-          const orig = data.originalAmount ? ` (${data.originalAmount} ${data.currency})` : "";
-          setView({ type: "success", data: `✅ تم شحن ${added.toFixed(4)}$${orig} بنجاح عبر ${selectedMethod.name}!` });
-        } else {
-          showToast(data.error || "فشل التحقق", 'error');
-        }
-      } catch (e) {
-        showToast("فشل الاتصال بالخادم", 'error');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    const handleTopUp = async () => {
-      if (!user || !selectedMethod || !amount || !receiptUrl) {
-        showToast("يرجى إكمال جميع البيانات ورفع الإيصال", 'error');
-        return;
-      }
-      
-      const numAmount = parseFloat(amount);
-      if (numAmount < selectedMethod.min_amount) {
-        showToast(`أقل مبلغ للشحن عبر هذه الطريقة هو ${selectedMethod.min_amount} $`, 'error');
-        return;
-      }
-
-      setLoading(true);
-      try {
-        const res = await fetch("/api/transactions/upload", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("authToken") || ""}` },
-          body: JSON.stringify({
-            userId: user.id,
-            paymentMethodId: selectedMethod.id,
-            amount: numAmount,
-            note,
-            receiptImageUrl: receiptUrl
-          })
-        });
-        const data = await res.json();
-        if (data.success) {
-          setView({ type: "success", data: "تم إرسال طلب الشحن بنجاح، يرجى انتظار التحقق." });
-          fetchTransactions();
-        } else {
-          showToast(data.error || "فشل إرسال الطلب", 'error');
-        }
-      } catch (e) {
-        showToast("فشل الاتصال بالخادم، يرجى المحاولة لاحقاً", 'error');
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (selectedMethod) {
-      const isAuto = selectedMethod.method_type === 'syriatel' || selectedMethod.method_type === 'shamcash';
-      return (
-        <div className="px-4 space-y-6 pb-20">
-          <div className="flex items-center gap-2 mb-6">
-            <button onClick={() => setSelectedMethod(null)} className="p-2 bg-gray-100 rounded-full">
-              <ArrowRight size={20} className="text-gray-600" />
-            </button>
-            <h2 className="text-xl font-bold text-gray-800">شحن عبر {selectedMethod.name}</h2>
-          </div>
-
-          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-6">
-            {isAuto ? (
-              /* --- Auto verify UI (Syriatel / ShamCash) --- */
-              <>
-                <div className="bg-green-50 p-4 rounded-xl border border-green-100 text-center space-y-1">
-                  <p className="text-green-700 font-bold text-sm">✅ شحن تلقائي فوري</p>
-                  <p className="text-green-600 text-xs">يتم التحقق من العملية تلقائياً وإضافة الرصيد فوراً 
-في حال كانت العملية بالليرة السورية سيتم تعبئة رصيد بـ1$ لكل 120 ل.س جديدو</p>
-                </div>
-                <div className="bg-brand-light p-4 rounded-xl border border-brand-soft text-center">
-                  <p className="text-brand text-xs mb-1">
-                    {selectedMethod.method_type === 'syriatel' ? 'رقم سيريتل كاش' : 'عنوان شام كاش'}
-                  </p>
-                  <p className="text-xl font-bold text-brand tracking-wider">{selectedMethod.wallet_address}</p>
-                  {selectedMethod.min_amount > 0 && (
-                    <p className="text-xs text-brand mt-2 font-bold">أقل مبلغ: {selectedMethod.min_amount} $</p>
-                  )}
-                </div>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-gray-700">اكتب قيمة المبلغ المرسل ان كان $ او ل.س </label>
-                    <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00"
-                      className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-gray-700">رقم العملية (Transaction ID)</label>
-                    <input type="text" value={txNumber} onChange={e => setTxNumber(e.target.value)}
-                      placeholder={selectedMethod.method_type === 'syriatel' ? 'مثال: 123456789' : 'مثال: 987654321'}
-                      className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand font-mono" />
-                    <p className="text-xs text-gray-400">أدخل رقم العملية كما يظهر في تطبيق {selectedMethod.name}</p>
-                  </div>
-                  <button disabled={loading || !txNumber || !amount} onClick={handleAutoTopUp}
-                    className="w-full bg-brand text-white py-4 rounded-xl font-bold shadow-lg shadow-brand-soft disabled:opacity-50">
-                    {loading ? "جاري التحقق..." : "تحقق وشحن فوراً"}
-                  </button>
-                </div>
-              </>
-            ) : (
-              /* --- Manual verify UI (existing) --- */
-              <>
-                <div className="bg-brand-light p-4 rounded-xl border border-brand-soft text-center space-y-2">
-                  <p className="text-brand text-xs font-semibold mb-1">رقم المحفظة / العنوان</p>
-                  <div className="flex items-center justify-center gap-2 flex-wrap">
-                    <p className="text-sm font-bold text-brand tracking-wider break-all">{selectedMethod.wallet_address}</p>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(selectedMethod.wallet_address).then(() => showToast("تم نسخ عنوان المحفظة!", 'success')).catch(() => showToast("فشل النسخ", 'error'));
-                      }}
-                      className="flex items-center gap-1 bg-brand text-white text-[10px] font-bold px-2 py-1 rounded-lg shrink-0"
-                    >
-                      <Copy size={11} /> نسخ
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-brand/70 font-medium">طريقة الدفع: {selectedMethod.name}</p>
-                  {selectedMethod.description && (
-                    <p className="text-xs text-brand/60 font-light mt-1">{selectedMethod.description}</p>
-                  )}
-                  {selectedMethod.min_amount > 0 && (
-                    <p className="text-xs text-brand mt-1 font-bold">أقل مبلغ: {selectedMethod.min_amount} $</p>
-                  )}
-                </div>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-gray-700">المبلغ المراد شحنه</label>
-                    <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00"
-                      className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-gray-700">ملاحظات إضافية</label>
-                    <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="اختياري..."
-                      className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand h-24 resize-none" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-gray-700">إرفاق صورة الإيصال</label>
-                    <label className="w-full h-32 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-2 text-gray-400 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors relative overflow-hidden">
-                      {receiptUrl ? (
-                        <>
-                          <img loading="lazy" src={receiptUrl} className="w-full h-full object-cover" alt="Receipt" referrerPolicy="no-referrer" />
-                          <button onClick={clearReceipt} className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-colors z-10"><X size={16} /></button>
-                        </>
-                      ) : (
-                        <>
-                          <ImageIcon size={32} />
-                          <span className="text-xs">{uploading ? "جاري الرفع..." : "اضغط لرفع الصورة"}</span>
-                        </>
-                      )}
-                      <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
-                    </label>
-                  </div>
-                  <button disabled={loading || uploading || !receiptUrl} onClick={handleTopUp}
-                    className="w-full bg-brand text-white py-4 rounded-xl font-bold shadow-lg shadow-brand-soft disabled:opacity-50">
-                    {loading ? "جاري الإرسال..." : "إرسال طلب التحقق"}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="px-4 space-y-6 pb-20">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6">شحن الرصيد</h2>
-        
-        <button 
-          onClick={() => setView({ type: "voucher_redeem" })}
-          className="w-full bg-gradient-to-r from-brand to-brand-soft p-6 rounded-2xl text-white shadow-lg shadow-brand-soft flex items-center justify-between mb-8"
-        >
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-              <Ticket size={28} />
-            </div>
-            <div className="text-right">
-              <h3 className="font-bold text-lg">استرداد كود رصيد</h3>
-              <p className="text-white/80 text-xs">اشحن رصيدك عبر الأكواد والقسائم</p>
-            </div>
-          </div>
-          <ChevronRight size={24} className="text-white/60" />
-        </button>
-
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-gray-800">طرق الشحن المباشر</h3>
-        </div>
-
-        <div className="grid grid-cols-3 gap-3">
-          {paymentMethods.map(method => (
-            <button 
-              key={method.id}
-              onClick={() => setSelectedMethod(method)}
-              className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col items-center gap-2 hover:border-brand-soft transition-colors"
-            >
-              <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden">
-                <img loading="lazy" src={method.image_url || "https://picsum.photos/seed/pay/100/100"} alt={method.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-              </div>
-              <span className="font-bold text-gray-800 text-[10px] text-center">{method.name}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  };
 
   const PaymentsView = () => {
     const [expandedId, setExpandedId] = useState<number | null>(null);
