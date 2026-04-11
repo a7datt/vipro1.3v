@@ -492,6 +492,7 @@ export default function App() {
 
   // ===== HOME SORT MODE & FAVORITES =====
   const [homeSortMode, setHomeSortMode] = useState<"categories" | "most_purchased" | "favorites">("categories");
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [mostPurchased, setMostPurchased] = useState<any[]>([]);
   const [mostPurchasedLoading, setMostPurchasedLoading] = useState(false);
   const [favorites, setFavorites] = useState<any[]>(() => {
@@ -502,6 +503,27 @@ export default function App() {
 
   // ===== CUSTOM DIALOG STATE =====
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  // ===== NAVIGATION HISTORY STACK =====
+  const [viewHistory, setViewHistory] = useState<any[]>([]);
+
+  const navigateTo = useCallback((newView: any) => {
+    setViewHistory(prev => [...prev, newView]);
+    setView(newView);
+  }, []);
+
+  const navigateBack = useCallback(() => {
+    setViewHistory(prev => {
+      if (prev.length <= 1) {
+        setView({ type: "main" });
+        return [];
+      }
+      const newHistory = prev.slice(0, -1);
+      const prevView = newHistory[newHistory.length - 1];
+      setView(prevView);
+      return newHistory;
+    });
+  }, []);
 
   // ===== PULL TO REFRESH =====
   const pullStartY = useRef(0);
@@ -736,7 +758,7 @@ export default function App() {
   useEffect(() => {
     const handlePopState = () => {
       if (view.type !== 'main') {
-        setView({ type: 'main' });
+        navigateBack();
         window.history.pushState(null, '', window.location.href);
       } else if (activeTab !== 'home') {
         setActiveTab('home');
@@ -746,31 +768,15 @@ export default function App() {
     window.history.pushState(null, '', window.location.href);
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [view, activeTab]);
+  }, [view, activeTab, navigateBack]);
 
-  // ===== PULL TO REFRESH =====
+  // ===== PULL TO REFRESH (DISABLED) =====
   useEffect(() => {
     if (activeTab !== 'home') return;
-    const onTouchStart = (e: TouchEvent) => {
-      if (window.scrollY === 0) pullStartY.current = e.touches[0].clientY;
-    };
-    const onTouchMove = (e: TouchEvent) => {
-      const dist = e.touches[0].clientY - pullStartY.current;
-      if (dist > 0 && window.scrollY === 0) {
-        setIsPulling(true);
-        setPullDistance(Math.min(dist * 0.5, 80));
-      }
-    };
+    const onTouchStart = (_e: TouchEvent) => {};
+    const onTouchMove = (_e: TouchEvent) => {};
     const onTouchEnd = async () => {
-      if (pullDistance > 55 && !isRefreshing) {
-        setIsRefreshing(true);
-        setPullDistance(0);
-        setIsPulling(false);
-        await fetchCategories();
-        await fetchBanners();
-        await fetchOffers();
-        setIsRefreshing(false);
-      } else {
+      if (false) {
         setPullDistance(0);
         setIsPulling(false);
       }
@@ -899,17 +905,38 @@ export default function App() {
   }, [user, isAdmin]);
 
   const markNotificationRead = async (id: number | string) => {
-    if (typeof id === 'string') return; // Local notifs
+    // Optimistic update - mark as read in local state immediately
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+    if (typeof id === 'string') return; // Local notifs - no API call needed
     try {
       await fetch("/api/notifications/mark-read", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notificationId: id })
       });
+      // Re-fetch to sync with server
       fetchNotifications();
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const markAllNotificationsRead = async () => {
+    const unread = (Array.isArray(notifications) ? notifications : []).filter(n => !n.is_read);
+    // Optimistic update
+    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    for (const n of unread) {
+      if (typeof n.id !== 'string') {
+        try {
+          await fetch("/api/notifications/mark-read", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ notificationId: n.id })
+          });
+        } catch {}
+      }
+    }
+    fetchNotifications();
   };
 
   const handleUnlinkTelegram = async () => {
@@ -1389,19 +1416,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 {(Array.isArray(notifications) ? notifications : []).some(n => !n.is_read) && (
                   <button
-                    onClick={async () => {
-                      const unread = (Array.isArray(notifications) ? notifications : []).filter(n => !n.is_read);
-                      for (const n of unread) {
-                        if (typeof n.id !== 'string') {
-                          await fetch("/api/notifications/mark-read", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ notificationId: n.id })
-                          });
-                        }
-                      }
-                      fetchNotifications();
-                    }}
+                    onClick={markAllNotificationsRead}
                     className="text-xs font-bold text-brand bg-brand-light px-3 py-1.5 rounded-full"
                   >
                     تمييز الكل كمقروء
@@ -1492,7 +1507,7 @@ export default function App() {
     return (
     <nav className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-gray-100 flex items-center justify-around z-40">
       <button 
-        onClick={() => { setCheckoutOrderResult(null); setActiveTab("home"); setView({ type: "main" }); }}
+        onClick={() => { setCheckoutOrderResult(null); setActiveTab("home"); setView({ type: "main" }); setViewHistory([]); }}
         className={`flex flex-col items-center gap-1 ${activeTab === "home" ? theme.text : "text-gray-400"}`}
       >
         <Home size={22} />
@@ -1764,20 +1779,61 @@ export default function App() {
           <h3 className="font-bold text-gray-800">
             {homeSortMode === "categories" ? "الأقسام الرئيسية" : homeSortMode === "most_purchased" ? "أكثر المنتجات شراءً" : "مفضلاتي"}
           </h3>
-          <select
-            value={homeSortMode}
-            onChange={e => {
-              const v = e.target.value as any;
-              setHomeSortMode(v);
-              if (v === "most_purchased") fetchMostPurchased();
-            }}
-            className={`text-sm font-medium border-0 outline-none bg-transparent ${theme.text} cursor-pointer`}
-            style={{direction:'rtl', textAlignLast:'right', paddingRight:'2px'}}
-          >
-            <option value="categories">اختر الترتيب</option>
-            <option value="most_purchased">أكثر المنتجات شراءً</option>
-            <option value="favorites">مفضلاتي</option>
-          </select>
+          {/* Custom Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowSortDropdown(v => !v)}
+              className={`flex items-center gap-1.5 text-sm font-bold px-3 py-1.5 rounded-full border ${theme.border} ${theme.text} bg-white shadow-sm`}
+            >
+              {homeSortMode === "categories" ? "الأقسام" : homeSortMode === "most_purchased" ? "الأكثر شراءً" : "المفضلة"}
+              <ChevronDown size={14} className={`transition-transform ${showSortDropdown ? "rotate-180" : ""}`} />
+            </button>
+            <AnimatePresence>
+              {showSortDropdown && (
+                <>
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setShowSortDropdown(false)}
+                    className="fixed inset-0 z-40"
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.92, y: -6 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    className="absolute left-0 top-full mt-2 z-50 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden min-w-[160px]"
+                  >
+                    {[
+                      { value: "categories", label: "الأقسام الرئيسية", icon: "🗂" },
+                      { value: "most_purchased", label: "الأكثر شراءً", icon: "🔥" },
+                      { value: "favorites", label: "مفضلاتي", icon: "⭐" },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => {
+                          const v = opt.value as any;
+                          setHomeSortMode(v);
+                          if (v === "most_purchased") fetchMostPurchased();
+                          setShowSortDropdown(false);
+                        }}
+                        className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-right transition-colors ${
+                          homeSortMode === opt.value
+                            ? `${theme.bgLight} ${theme.text}`
+                            : "text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        <span className="text-base">{opt.icon}</span>
+                        <span className="flex-1 text-right">{opt.label}</span>
+                        {homeSortMode === opt.value && <span className={`w-2 h-2 rounded-full ${theme.button}`} />}
+                      </button>
+                    ))}
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
 
         {/* ===== CATEGORIES VIEW ===== */}
@@ -1800,7 +1856,7 @@ export default function App() {
                   onClick={async () => {
                     setPageLoading(true);
                     await fetchSubcategories(cat.id);
-                    setView({ type: "subcategories", id: cat.id, data: cat.name });
+                    navigateTo({ type: "subcategories", id: cat.id, data: cat.name });
                     setPageLoading(false);
                   }}
                   onContextMenu={e => e.preventDefault()}
@@ -1856,12 +1912,12 @@ export default function App() {
                 whileTap={{ scale: 0.95 }}
                 key={prod.id}
                 onClick={() => {
-                  if (!user) return setView({ type: "login" });
+                  if (!user) return navigateTo({ type: "login" });
                   if (prod.store_type === 'quick_order') {
-                    setView({ type: "quick_order", data: prod });
+                    navigateTo({ type: "quick_order", data: prod });
                   } else {
                     setCheckoutQuantity(parseInt(String(prod.min_quantity)) || 0);
-                    setView({ type: "checkout", data: prod });
+                    navigateTo({ type: "checkout", data: prod });
                   }
                 }}
                 className="bg-white rounded-xl border border-gray-100 shadow-sm flex flex-col items-center overflow-hidden cursor-pointer"
@@ -1903,33 +1959,42 @@ export default function App() {
                     <motion.button
                       whileTap={{ scale: 0.95 }}
                       onClick={async () => {
+                        // Reset history when coming from favorites - start fresh from main
+                        setViewHistory([{ type: "main" }]);
                         if (fav._fav_type === "category") {
                           setPageLoading(true);
                           await fetchSubcategories(fav.id);
-                          setView({ type: "subcategories", id: fav.id, data: fav.name, fromFav: true });
+                          const nextView = { type: "subcategories", id: fav.id, data: fav.name, fromFav: true };
+                          setViewHistory([{ type: "main" }, nextView]);
+                          setView(nextView);
                           setPageLoading(false);
                         } else if (fav._fav_type === "subcategory") {
                           setPageLoading(true);
                           const subSubs = await fetchSubSubCategories(fav.id);
                           await fetchProducts(fav.id);
                           if (subSubs.length > 0) {
-                            setView({ type: "sub_sub_categories", id: fav.id, data: fav.name, catId: fav.category_id, fromFav: true });
+                            const nextView = { type: "sub_sub_categories", id: fav.id, data: fav.name, catId: fav.category_id, fromFav: true };
+                            setViewHistory([{ type: "main" }, nextView]);
+                            setView(nextView);
                           } else {
-                            setView({ type: "products", id: fav.id, data: fav.name, fromSubSub: false, catId: fav.category_id, fromFav: true });
+                            const nextView = { type: "products", id: fav.id, data: fav.name, fromSubSub: false, catId: fav.category_id, fromFav: true };
+                            setViewHistory([{ type: "main" }, nextView]);
+                            setView(nextView);
                           }
                           setPageLoading(false);
                         } else if (fav._fav_type === "sub_sub_category") {
                           setPageLoading(true);
                           await fetchProducts(fav.id, true);
-                          setView({ type: "products", id: fav.id, data: fav.name, fromSubSub: true, catId: fav.category_id, subId: fav.subcategory_id, fromFav: true });
+                          const nextView = { type: "products", id: fav.id, data: fav.name, fromSubSub: true, catId: fav.category_id, subId: fav.subcategory_id, fromFav: true };
+                          setViewHistory([{ type: "main" }, nextView]);
+                          setView(nextView);
                           setPageLoading(false);
                         } else if (fav._fav_type === "product") {
                           setPageLoading(true);
-                          // جلب المنتجات لاسترجاع بيانات المنتج الكاملة
                           const subId = fav._view_id;
                           const isSubSub = fav._view_fromSubSub ?? true;
                           await fetchProducts(subId, isSubSub);
-                          setView({
+                          const prodListView = {
                             type: "products",
                             id: subId,
                             data: fav._view_data,
@@ -1938,9 +2003,10 @@ export default function App() {
                             subId: fav._view_subId,
                             subName: fav._view_subName,
                             fromFav: true,
-                          });
+                          };
+                          setViewHistory([{ type: "main" }, prodListView]);
+                          setView(prodListView);
                           setPageLoading(false);
-                          // فتح صفحة الشراء مباشرة
                           setTimeout(() => {
                             if (!user) return setView({ type: "login" });
                             if (fav.store_type === 'quick_order') {
@@ -2012,14 +2078,7 @@ export default function App() {
   const SubcategoriesView = () => (
     <div className="px-4 space-y-4 pb-20">
       <div className="flex items-center gap-2 mb-6">
-        <button onClick={() => {
-          if (view.fromFav) {
-            setView({ type: "main" });
-            setHomeSortMode("favorites");
-          } else {
-            setView({ type: "main" });
-          }
-        }} className="p-2 bg-gray-100 rounded-full">
+        <button onClick={navigateBack} className="p-2 bg-gray-100 rounded-full">
           <ArrowRight size={20} className="text-gray-600" />
         </button>
         <h2 className="text-xl font-bold text-gray-800">{view.data}</h2>
@@ -2057,9 +2116,9 @@ export default function App() {
                   const subSubs = await fetchSubSubCategories(sub.id);
                   await fetchProducts(sub.id);
                   if (subSubs.length > 0) {
-                    setView({ type: "sub_sub_categories", id: sub.id, data: sub.name, catId: view.id });
+                    navigateTo({ type: "sub_sub_categories", id: sub.id, data: sub.name, catId: view.id });
                   } else {
-                    setView({ type: "products", id: sub.id, data: sub.name, fromSubSub: false });
+                    navigateTo({ type: "products", id: sub.id, data: sub.name, fromSubSub: false });
                   }
                   setPageLoading(false);
                 }}
@@ -2098,13 +2157,7 @@ export default function App() {
     return (
       <div className="px-4 space-y-4 pb-20">
         <div className="flex items-center gap-2 mb-6">
-          <button onClick={() => {
-            if (view.fromFav) {
-              setView({ type: "main" });
-            } else {
-              setView({ type: "subcategories", id: view.catId, data: view.data });
-            }
-          }} className="p-2 bg-gray-100 rounded-full">
+          <button onClick={navigateBack} className="p-2 bg-gray-100 rounded-full">
             <ArrowRight size={20} className="text-gray-600" />
           </button>
           <h2 className="text-xl font-bold text-gray-800">{view.data}</h2>
@@ -2123,7 +2176,7 @@ export default function App() {
                   onClick={async () => {
                     setPageLoading(true);
                     await fetchProducts(ss.id, true);
-                    setView({ type: "products", id: ss.id, data: ss.name, fromSubSub: true, subId: view.id, subName: view.data, catId: view.catId, fromFav: view.fromFav });
+                    navigateTo({ type: "products", id: ss.id, data: ss.name, fromSubSub: true, subId: view.id, subName: view.data, catId: view.catId, fromFav: view.fromFav });
                     setPageLoading(false);
                   }}
                   onContextMenu={e => e.preventDefault()}
@@ -2221,19 +2274,7 @@ export default function App() {
   const ProductsView = () => (
     <div className="px-4 space-y-4 pb-20">
       <div className="flex items-center gap-2 mb-6">
-        <button
-          onClick={() => {
-            if (view.fromSubSub) {
-              // جاء من sub_sub_category — ارجع لها مع الحفاظ على fromFav
-              setView({ type: "sub_sub_categories", id: view.subId, data: view.subName, catId: view.catId, fromFav: view.fromFav });
-            } else if (view.fromFav) {
-              // جاء من المفضلة مباشرة (subcategory بدون sub_sub) — رجوع للرئيسية
-              setView({ type: "main" });
-            } else {
-              setView({ type: "subcategories", data: "الرجوع" });
-            }
-          }}
-          className="p-2 bg-gray-100 rounded-full">
+        <button onClick={navigateBack} className="p-2 bg-gray-100 rounded-full">
           <ArrowRight size={20} className="text-gray-600" />
         </button>
         <h2 className="text-xl font-bold text-gray-800">{view.data}</h2>
@@ -8315,18 +8356,6 @@ const AdminPanel = ({
         )}
       </AnimatePresence>
       {/* ===== END LONG PRESS OVERLAY ===== */}
-
-      {/* ===== PULL TO REFRESH INDICATOR ===== */}
-      {activeTab === 'home' && (isPulling || isRefreshing) && (
-        <div
-          className="fixed top-0 left-1/2 -translate-x-1/2 z-[9990] flex items-center justify-center"
-          style={{ transform: `translate(-50%, ${Math.max(0, pullDistance - 10)}px)`, transition: isPulling ? 'none' : 'transform 0.3s ease' }}
-        >
-          <div className={`bg-white rounded-full shadow-lg p-2.5 border border-gray-100 mt-2 ${isRefreshing ? 'animate-spin' : ''}`}>
-            <RefreshCw size={20} className="text-brand" />
-          </div>
-        </div>
-      )}
 
       {/* ===== TOAST CONTAINER ===== */}
       <ToastContainer />
