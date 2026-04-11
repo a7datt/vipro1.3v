@@ -68,6 +68,12 @@ import {
   Filter,
   RefreshCcw,
   DollarSign,
+  Sun,
+  Moon,
+  Shield,
+  Gift,
+  Headphones,
+  Link2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -322,7 +328,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("home");
   const [user, setUser] = useState<UserData | null>(null);
   const [userStats, setUserStats] = useState<any>(null);
-  const [view, setView] = useState<{ type: string; id?: number; data?: any; catId?: number; fromSubSub?: boolean; subId?: number; subName?: string }>({ type: "main" });
+  const [view, setView] = useState<{ type: string; id?: number; data?: any; catId?: number; fromSubSub?: boolean; subId?: number; subName?: string; fromFav?: boolean }>({ type: "main" });
   const [pageLoading, setPageLoading] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
@@ -416,10 +422,23 @@ export default function App() {
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      // أظهر الإشعار تلقائياً في كل جلسة إذا التطبيق غير مثبت
+      // أظهر الإشعار كل 5 جلسات فقط وليس كل جلسة
       const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
       if (!isStandalone) {
-        setTimeout(() => setShowInstallBanner(true), 2000);
+        const sessionKey = "vipro_install_session";
+        const lastShownKey = "vipro_install_last_session";
+        // رقم الجلسة الحالية
+        const currentSession = parseInt(sessionStorage.getItem(sessionKey) || "0");
+        if (currentSession === 0) {
+          // جلسة جديدة — زد العداد في localStorage
+          const totalSessions = parseInt(localStorage.getItem(lastShownKey) || "0") + 1;
+          localStorage.setItem(lastShownKey, String(totalSessions));
+          sessionStorage.setItem(sessionKey, String(totalSessions));
+          // أظهر فقط إذا كانت الجلسة مضاعف 5
+          if (totalSessions % 5 === 1 || totalSessions === 1) {
+            setTimeout(() => setShowInstallBanner(true), 2000);
+          }
+        }
       }
     };
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -1285,7 +1304,10 @@ export default function App() {
     );
   };
 
-  const Drawer = () => (
+  const Drawer = () => {
+    const whatsappLink = siteSettings?.find((s: any) => s.key === "support_whatsapp")?.value || "https://chat.whatsapp.com/DELXtdEh9ua5edFTupESNU";
+
+    return (
     <AnimatePresence>
       {isDrawerOpen && (
         <>
@@ -1300,49 +1322,154 @@ export default function App() {
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
-            className="fixed top-0 right-0 bottom-0 w-72 bg-white z-50 shadow-2xl flex flex-col"
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className={`fixed top-0 right-0 bottom-0 w-72 z-50 shadow-2xl flex flex-col ${isDarkMode ? "bg-zinc-900 text-white" : "bg-white text-gray-800"}`}
           >
-            <div className={`p-6 ${theme.primary} text-white`}>
-              <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
-                <User size={32} />
-              </div>
-              <h3 className="font-bold text-lg">{user ? user.name : "زائر"}</h3>
-              <p className="text-white/80 text-sm">{user ? user.email : "سجل الدخول للمزيد"}</p>
+            {/* ===== رأس القائمة — معلومات الحساب ===== */}
+            <div className={`${theme.primary} p-5 pt-10`}>
+              {user ? (
+                <div className="flex items-center gap-3">
+                  {/* صورة الحساب */}
+                  <div className="w-16 h-16 rounded-2xl overflow-hidden bg-white/20 flex items-center justify-center flex-shrink-0 border-2 border-white/30">
+                    {user.avatar_url
+                      ? <img src={user.avatar_url} alt="avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      : <User size={28} className="text-white" />
+                    }
+                  </div>
+                  {/* بيانات الحساب */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-white text-sm truncate">{user.name}</p>
+                    <p className="text-white/75 text-[11px] truncate">{user.email}</p>
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      <span className="bg-white/20 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">#{user.id}</span>
+                      <span className="bg-white/20 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <Wallet size={9} /> {user.balance?.toFixed(2) ?? "0.00"} $
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center">
+                    <User size={26} className="text-white" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-white text-sm">زائر</p>
+                    <p className="text-white/70 text-xs">سجل الدخول للمزيد</p>
+                  </div>
+                </div>
+              )}
             </div>
-            
-            <div className="flex-1 py-4 overflow-y-auto">
-              <DrawerItem icon={<User size={20} />} label="الملف الشخصي" onClick={() => { setActiveTab("profile"); setView({ type: "main" }); setIsDrawerOpen(false); }} />
-              <DrawerItem icon={<History size={20} />} label="دفعاتي" onClick={() => { setActiveTab("profile"); setView({ type: "payments" }); setIsDrawerOpen(false); }} />
-              <DrawerItem icon={<MessageSquare size={20} />} label="الدعم الفني" onClick={() => { setView({ type: "chat" }); setIsDrawerOpen(false); }} />
+
+            {/* ===== قائمة العناصر ===== */}
+            <div className="flex-1 overflow-y-auto py-2">
+
+              {user && (
+                <>
+                  <DrawerItem icon={<History size={18} />}    label="دفعاتي"      onClick={() => { setActiveTab("profile"); setView({ type: "payments" }); setIsDrawerOpen(false); }} />
+                  <DrawerItem icon={<ShoppingBag size={18} />} label="طلباتي"     onClick={() => { setActiveTab("orders"); setView({ type: "main" }); setIsDrawerOpen(false); }} />
+                  <DrawerItem icon={<Wallet size={18} />}     label="شحن الرصيد"  onClick={() => { setActiveTab("wallet"); setView({ type: "main" }); setIsDrawerOpen(false); }} />
+                  <DrawerItem icon={<Star size={18} />}       label="المفضلة"     onClick={() => { setActiveTab("home"); setView({ type: "main" }); setHomeSortMode("favorites"); setIsDrawerOpen(false); }} />
+
+                  <div className={`my-2 mx-4 border-t ${isDarkMode ? "border-zinc-700" : "border-gray-100"}`} />
+
+                  <DrawerItem icon={<Trophy size={18} />}     label="الترتيب"     onClick={() => { setActiveTab("profile"); setView({ type: "leaderboard" }); setIsDrawerOpen(false); }} />
+                  <DrawerItem icon={<Gift size={18} />}       label="الإحالة"     onClick={() => { setActiveTab("profile"); setView({ type: "referral" }); setIsDrawerOpen(false); }} />
+
+                  <div className={`my-2 mx-4 border-t ${isDarkMode ? "border-zinc-700" : "border-gray-100"}`} />
+
+                  <DrawerItem icon={<Headphones size={18} />} label="الدعم الفني"  onClick={() => { setActiveTab("profile"); setView({ type: "chat" }); setIsDrawerOpen(false); }} />
+
+                  {/* واتساب */}
+                  <button
+                    onClick={() => { window.open(whatsappLink, "_blank"); setIsDrawerOpen(false); }}
+                    className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors ${isDarkMode ? "hover:bg-zinc-800" : "hover:bg-gray-50"}`}
+                  >
+                    <span className="text-green-500">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                    </span>
+                    <span className="font-medium text-sm">دعم واتساب</span>
+                  </button>
+
+                  <DrawerItem icon={<Shield size={18} />}     label="سياسة الخصوصية" onClick={() => { setActiveTab("profile"); setView({ type: "privacy_policy" }); setIsDrawerOpen(false); }} />
+
+                  {/* ربط تلجرام */}
+                  <button
+                    onClick={() => {
+                      if (user?.telegram_chat_id) {
+                        handleUnlinkTelegram();
+                      } else {
+                        handleGenerateLinkingCode();
+                      }
+                      setIsDrawerOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors ${isDarkMode ? "hover:bg-zinc-800" : "hover:bg-gray-50"}`}
+                  >
+                    <span className={user?.telegram_chat_id ? "text-blue-500" : "text-orange-400"}>
+                      <MessageSquare size={18} />
+                    </span>
+                    <span className="font-medium text-sm flex-1 text-right">
+                      {user?.telegram_chat_id ? "تلجرام مرتبط ✓" : "ربط تلجرام"}
+                    </span>
+                    {user?.telegram_chat_id && (
+                      <span className="text-[10px] text-red-400 font-bold">فك الربط</span>
+                    )}
+                  </button>
+
+                  <div className={`my-2 mx-4 border-t ${isDarkMode ? "border-zinc-700" : "border-gray-100"}`} />
+                </>
+              )}
+
+              {/* الوضع الليلي / النهاري */}
+              <div className={`flex items-center justify-between px-5 py-3.5 ${isDarkMode ? "hover:bg-zinc-800" : "hover:bg-gray-50"} transition-colors`}>
+                <div className="flex items-center gap-4">
+                  <span className={isDarkMode ? "text-yellow-400" : "text-gray-500"}>
+                    {isDarkMode ? <Moon size={18} /> : <Sun size={18} />}
+                  </span>
+                  <span className="font-medium text-sm">{isDarkMode ? "الوضع الليلي" : "الوضع النهاري"}</span>
+                </div>
+                <button
+                  onClick={() => setIsDarkMode(!isDarkMode)}
+                  className={`w-12 h-6 rounded-full relative transition-all duration-300 ${isDarkMode ? "bg-brand" : "bg-gray-200"}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all duration-300 flex items-center justify-center ${isDarkMode ? "right-1" : "left-1"}`}>
+                    {isDarkMode ? <Moon size={9} className="text-brand" /> : <Sun size={9} className="text-yellow-500" />}
+                  </div>
+                </button>
+              </div>
+
               {deferredPrompt && (
-                <DrawerItem 
-                  icon={<Download size={20} />} 
-                  label="تثبيت التطبيق" 
-                  onClick={() => { handleInstallApp(); setIsDrawerOpen(false); }} 
+                <DrawerItem
+                  icon={<Download size={18} />}
+                  label="تثبيت التطبيق"
+                  onClick={() => { handleInstallApp(); setIsDrawerOpen(false); }}
                   className="text-brand"
                 />
               )}
-              <div className="border-t border-gray-100 my-2"></div>
+
+              <div className={`my-2 mx-4 border-t ${isDarkMode ? "border-zinc-700" : "border-gray-100"}`} />
+
               {user ? (
-                <DrawerItem icon={<LogOut size={20} />} label="تسجيل الخروج" onClick={handleLogout} className="text-red-500" />
+                <DrawerItem icon={<LogOut size={18} />} label="تسجيل الخروج" onClick={handleLogout} className="text-red-500" />
               ) : (
-                <DrawerItem icon={<ArrowRight size={20} />} label="تسجيل الدخول" onClick={() => { setView({ type: "login" }); setIsDrawerOpen(false); }} />
+                <DrawerItem icon={<ArrowRight size={18} />} label="تسجيل الدخول" onClick={() => { setView({ type: "login" }); setIsDrawerOpen(false); }} />
               )}
             </div>
-            
-            <div className="p-4 text-center text-xs text-gray-400 border-t border-gray-100">
-              الإصدار 1.0.0
+
+            <div className={`p-3 text-center text-[10px] border-t ${isDarkMode ? "text-zinc-500 border-zinc-700" : "text-gray-300 border-gray-100"}`}>
+              vipro store · الإصدار 1.3
             </div>
           </motion.div>
         </>
       )}
     </AnimatePresence>
-  );
+    );
+  };
 
   const DrawerItem = ({ icon, label, onClick, className = "" }: any) => (
-    <button onClick={onClick} className={`w-full flex items-center gap-4 px-6 py-4 hover:bg-gray-50 transition-colors ${className}`}>
-      <span className="text-gray-500">{icon}</span>
-      <span className="font-medium">{label}</span>
+    <button onClick={onClick} className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors text-sm font-medium ${isDarkMode ? "hover:bg-zinc-800" : "hover:bg-gray-50"} ${className}`}>
+      <span className={className ? "" : isDarkMode ? "text-zinc-400" : "text-gray-500"}>{icon}</span>
+      <span>{label}</span>
     </button>
   );
 
@@ -1536,22 +1663,22 @@ export default function App() {
                         if (fav._fav_type === "category") {
                           setPageLoading(true);
                           await fetchSubcategories(fav.id);
-                          setView({ type: "subcategories", id: fav.id, data: fav.name });
+                          setView({ type: "subcategories", id: fav.id, data: fav.name, fromFav: true });
                           setPageLoading(false);
                         } else if (fav._fav_type === "subcategory") {
                           setPageLoading(true);
                           const subSubs = await fetchSubSubCategories(fav.id);
                           await fetchProducts(fav.id);
                           if (subSubs.length > 0) {
-                            setView({ type: "sub_sub_categories", id: fav.id, data: fav.name, catId: fav.category_id });
+                            setView({ type: "sub_sub_categories", id: fav.id, data: fav.name, catId: fav.category_id, fromFav: true });
                           } else {
-                            setView({ type: "products", id: fav.id, data: fav.name, fromSubSub: false, catId: fav.category_id });
+                            setView({ type: "products", id: fav.id, data: fav.name, fromSubSub: false, catId: fav.category_id, fromFav: true });
                           }
                           setPageLoading(false);
                         } else if (fav._fav_type === "sub_sub_category") {
                           setPageLoading(true);
                           await fetchProducts(fav.id, true);
-                          setView({ type: "products", id: fav.id, data: fav.name, fromSubSub: true, catId: fav.category_id, subId: fav.subcategory_id });
+                          setView({ type: "products", id: fav.id, data: fav.name, fromSubSub: true, catId: fav.category_id, subId: fav.subcategory_id, fromFav: true });
                           setPageLoading(false);
                         } else if (fav._fav_type === "product") {
                           setPageLoading(true);
@@ -1567,6 +1694,7 @@ export default function App() {
                             catId: fav._view_catId,
                             subId: fav._view_subId,
                             subName: fav._view_subName,
+                            fromFav: true,
                           });
                           setPageLoading(false);
                           // فتح صفحة الشراء مباشرة
@@ -1711,7 +1839,13 @@ export default function App() {
     return (
       <div className="px-4 space-y-4 pb-20">
         <div className="flex items-center gap-2 mb-6">
-          <button onClick={() => setView({ type: "subcategories", id: view.catId, data: view.data })} className="p-2 bg-gray-100 rounded-full">
+          <button onClick={() => {
+            if (view.fromFav) {
+              setView({ type: "main" });
+            } else {
+              setView({ type: "subcategories", id: view.catId, data: view.data });
+            }
+          }} className="p-2 bg-gray-100 rounded-full">
             <ArrowRight size={20} className="text-gray-600" />
           </button>
           <h2 className="text-xl font-bold text-gray-800">{view.data}</h2>
@@ -1730,7 +1864,7 @@ export default function App() {
                   onClick={async () => {
                     setPageLoading(true);
                     await fetchProducts(ss.id, true);
-                    setView({ type: "products", id: ss.id, data: ss.name, fromSubSub: true, subId: view.id, subName: view.data, catId: view.catId });
+                    setView({ type: "products", id: ss.id, data: ss.name, fromSubSub: true, subId: view.id, subName: view.data, catId: view.catId, fromFav: view.fromFav });
                     setPageLoading(false);
                   }}
                   onContextMenu={e => e.preventDefault()}
@@ -1831,7 +1965,11 @@ export default function App() {
         <button
           onClick={() => {
             if (view.fromSubSub) {
-              setView({ type: "sub_sub_categories", id: view.subId, data: view.subName, catId: view.catId });
+              // جاء من sub_sub_category — ارجع لها مع الحفاظ على fromFav
+              setView({ type: "sub_sub_categories", id: view.subId, data: view.subName, catId: view.catId, fromFav: view.fromFav });
+            } else if (view.fromFav) {
+              // جاء من المفضلة مباشرة (subcategory بدون sub_sub) — رجوع للرئيسية
+              setView({ type: "main" });
             } else {
               setView({ type: "subcategories", data: "الرجوع" });
             }
@@ -3771,7 +3909,7 @@ export default function App() {
           </button>
 
           <button 
-            onClick={() => setView({ type: "chat" })}
+            onClick={() => { setActiveTab("profile"); setView({ type: "chat" }); }}
             className="w-full flex items-center justify-center gap-2 text-gray-400 text-xs font-bold pt-4"
           >
             <Phone size={14} /> تواصل مع الدعم الفني
