@@ -480,6 +480,13 @@ export default function App() {
   const [siteSettings, setSiteSettings] = useState<any[]>([]);
   const [isDarkMode, setIsDarkMode] = useState(localStorage.getItem("theme") === "dark");
   const [voucherCode, setVoucherCode] = useState("");
+  // ── Wallet charge form states (رُفعت هنا لمنع ضياع البيانات عند إعادة الرسم) ──
+  const [walletAmount, setWalletAmount] = useState("");
+  const [walletNote, setWalletNote] = useState("");
+  const [walletReceiptUrl, setWalletReceiptUrl] = useState("");
+  const [walletUploading, setWalletUploading] = useState(false);
+  const [walletTxNumber, setWalletTxNumber] = useState("");
+  const [walletLoading, setWalletLoading] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [blockCountdown, setBlockCountdown] = useState(0);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -520,6 +527,11 @@ export default function App() {
       }
       const newHistory = prev.slice(0, -1);
       const prevView = newHistory[newHistory.length - 1];
+      // إذا كان المصدر هو most_purchased نرجع للصفحة الرئيسية مباشرة
+      if (prevView?.fromMostPurchased) {
+        setView({ type: "main" });
+        return [];
+      }
       setView(prevView);
       return newHistory;
     });
@@ -911,7 +923,7 @@ export default function App() {
     try {
       await fetch("/api/notifications/mark-read", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("authToken") || ""}` },
         body: JSON.stringify({ notificationId: id })
       });
       // Re-fetch to sync with server
@@ -930,7 +942,7 @@ export default function App() {
         try {
           await fetch("/api/notifications/mark-read", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("authToken") || ""}` },
             body: JSON.stringify({ notificationId: n.id })
           });
         } catch {}
@@ -1077,10 +1089,10 @@ export default function App() {
   const handleRedeemVoucher = async () => {
     if (!user || !voucherCode) return;
     try {
-      const res = await fetch("/api/user/redeem-voucher", {
+      const res = await fetch("/api/vouchers/redeem", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, code: voucherCode })
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("authToken") || ""}` },
+        body: JSON.stringify({ code: voucherCode })
       });
       
       const contentType = res.headers.get("content-type");
@@ -1914,10 +1926,10 @@ export default function App() {
                 onClick={() => {
                   if (!user) return navigateTo({ type: "login" });
                   if (prod.store_type === 'quick_order') {
-                    navigateTo({ type: "quick_order", data: prod });
+                    navigateTo({ type: "quick_order", data: prod, fromMostPurchased: true });
                   } else {
                     setCheckoutQuantity(parseInt(String(prod.min_quantity)) || 0);
-                    navigateTo({ type: "checkout", data: prod });
+                    navigateTo({ type: "checkout", data: prod, fromMostPurchased: true });
                   }
                 }}
                 className="bg-white rounded-xl border border-gray-100 shadow-sm flex flex-col items-center overflow-hidden cursor-pointer"
@@ -2165,7 +2177,7 @@ export default function App() {
 
         {/* Sub-sub-categories */}
         {subSubCategories.length > 0 && (
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-4 gap-2">
             {subSubCategories.map(ss => {
               const favKey = `sss_${ss.id}`;
               let lpTimer2: any = null;
@@ -2200,7 +2212,7 @@ export default function App() {
                       onContextMenu={e => e.preventDefault()}
                     />
                   </div>
-                  <span className="font-bold text-gray-700 text-[9px] text-center w-full px-1 py-1.5 leading-tight">{ss.name}</span>
+                  <span className="font-bold text-gray-700 text-[8px] text-center w-full px-0.5 py-1 leading-tight">{ss.name}</span>
                 </motion.button>
               );
             })}
@@ -2800,13 +2812,25 @@ export default function App() {
 
   const WalletView = () => {
     const selectedMethod = selectedPaymentMethod;
-    const setSelectedMethod = setSelectedPaymentMethod;
-    const [amount, setAmount] = useState("");
-    const [note, setNote] = useState("");
-    const [loading, setLoading] = useState(false);
-    const [receiptUrl, setReceiptUrl] = useState("");
-    const [uploading, setUploading] = useState(false);
-    const [txNumber, setTxNumber] = useState("");
+    const setSelectedMethod = (m: PaymentMethod | null) => {
+      setSelectedPaymentMethod(m);
+      // إعادة تعيين الحقول عند تغيير طريقة الدفع
+      if (!m) {
+        setWalletAmount(""); setWalletNote(""); setWalletReceiptUrl(""); setWalletTxNumber("");
+      }
+    };
+    const amount = walletAmount;
+    const setAmount = setWalletAmount;
+    const note = walletNote;
+    const setNote = setWalletNote;
+    const loading = walletLoading;
+    const setLoading = setWalletLoading;
+    const receiptUrl = walletReceiptUrl;
+    const setReceiptUrl = setWalletReceiptUrl;
+    const uploading = walletUploading;
+    const setUploading = setWalletUploading;
+    const txNumber = walletTxNumber;
+    const setTxNumber = setWalletTxNumber;
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
