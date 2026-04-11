@@ -9,6 +9,7 @@ import {
   Wallet, 
   ShoppingBag, 
   User, 
+  UserCircle,
   Bell, 
   Menu, 
   ChevronRight, 
@@ -572,7 +573,7 @@ const WalletChargeView: React.FC<WalletChargeViewProps> = ({
               <div className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-gray-700">اكتب قيمة المبلغ المرسل ان كان $ او ل.س </label>
-                  <input type="number" value={walletAmount} onChange={e => setWalletAmount(e.target.value)} placeholder="0.00"
+                  <input type="text" inputMode="decimal" value={walletAmount} onChange={e => setWalletAmount(e.target.value)} placeholder="0.00"
                     className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand" />
                 </div>
                 <div className="space-y-2">
@@ -606,7 +607,7 @@ const WalletChargeView: React.FC<WalletChargeViewProps> = ({
               <div className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-gray-700">المبلغ المراد شحنه</label>
-                  <input type="number" value={walletAmount} onChange={e => setWalletAmount(e.target.value)} placeholder="0.00"
+                  <input type="text" inputMode="decimal" value={walletAmount} onChange={e => setWalletAmount(e.target.value)} placeholder="0.00"
                     className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand" />
                 </div>
                 <div className="space-y-2">
@@ -750,12 +751,15 @@ export default function App() {
     setViewHistory(prev => {
       if (prev.length <= 1) {
         setView({ type: "main" });
+        setActiveTab("home");
         return [];
       }
       const currentView = prev[prev.length - 1];
       // إذا وصلنا للصفحة الحالية عبر most_purchased نرجع للرئيسية مباشرة
       if (currentView?.fromMostPurchased) {
         setView({ type: "main" });
+        setActiveTab("home");
+        setHomeSortMode("categories");
         return [];
       }
       const newHistory = prev.slice(0, -1);
@@ -3348,238 +3352,86 @@ export default function App() {
   };
 
   const ProfileView = () => {
-    const [uploading, setUploading] = useState(false);
-
-    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      setUploading(true);
-      try {
-        const formData = new FormData();
-        formData.append("image", file);
-        const imgbbKey = (import.meta as any).env.VITE_IMGBB_API_KEY || "97ffbf56fe1a203445531d664cd4b928";
-        const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, { method: "POST", body: formData });
-        const data = await res.json();
-        if (data.success) {
-          const token = localStorage.getItem("authToken") || "";
-          const updateRes = await fetch(`/api/user/${user?.id}/avatar`, {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${token}`
-            },
-            body: JSON.stringify({ avatar_url: data.data.url })
-          });
-          if (updateRes.ok) { fetchUser(user!.id); showToast("✅ تم تحديث الصورة الشخصية بنجاح", 'success'); }
-          else { const err = await updateRes.json(); showToast("فشل التحديث: " + (err.error || "", 'error')); }
-        } else { showToast("فشل رفع الصورة على الخادم", 'error'); }
-      } catch { showToast("فشل رفع الصورة", 'error'); } finally { setUploading(false); }
-    };
-
     return (
-      <div className="px-4 space-y-5 pb-20">
+      <div className="px-4 space-y-4 pb-20">
 
-        {/* بطاقة الملف الشخصي */}
-        <div className={`bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col items-center text-center space-y-3 ${user?.is_vip ? 'vip-card-glow border-amber-200 shadow-amber-50' : ''}`}>
-          
-          {/* زر معلومات الحساب */}
-          <div className="w-full flex justify-end -mb-1">
-            <button
-              onClick={() => setView({ type: "profile_details" })}
-              className="p-2 bg-gray-100 hover:bg-brand-light text-gray-500 hover:text-brand rounded-xl transition-all active:scale-90"
-              title="معلومات الحساب التفصيلية"
-            >
-              <Pencil size={16} />
-            </button>
+        {/* صورة الحساب */}
+        <div className="flex flex-col items-center pt-6 pb-2">
+          <div className={`w-24 h-24 ${theme.bgLight} rounded-full flex items-center justify-center ${theme.icon} border-4 border-white shadow-lg ${theme.shadow} overflow-hidden ${user?.is_vip ? 'vip-glow' : ''} ${user?.stats?.frame ? `frame-${user.stats.frame}` : ''}`}>
+            {user?.avatar_url ? (
+              <img loading="lazy" src={user.avatar_url} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            ) : <User size={48} />}
           </div>
-
-          {/* الصورة الشخصية */}
-          <div className="relative">
-            <div className={`w-24 h-24 ${theme.bgLight} rounded-full flex items-center justify-center ${theme.icon} border-4 border-white shadow-lg ${theme.shadow} overflow-hidden ${user?.is_vip ? 'vip-glow' : ''} ${user?.stats?.frame ? `frame-${user.stats.frame}` : ''}`}>
-              {user?.avatar_url ? (
-                <img loading="lazy" src={user.avatar_url} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-              ) : <User size={48} />}
-              {uploading && (
-                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                  <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                </div>
-              )}
-            </div>
-            <label className="absolute bottom-0 right-0 bg-brand text-white p-2 rounded-full cursor-pointer shadow-lg hover:opacity-90 transition-colors">
-              <Plus size={16} />
-              <input type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} disabled={uploading} />
-            </label>
-          </div>
-
-          {/* الاسم والبيانات */}
-          <div>
-            <div className="flex items-center justify-center gap-2 flex-wrap">
-              <h2 className={`text-xl font-bold text-gray-800 ${user?.is_vip ? 'vip-text-glow' : ''}`}>{user?.name || "زائر"}</h2>
-              {user?.is_vip && <span className="vip-badge"><Crown size={10} />VIP</span>}
-              {user?.stats?.profile_badge && (
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold badge-${user.stats.profile_badge} inline-flex items-center gap-1`}>
-                  {user.stats.profile_badge === 'bronze' && <Award size={10} />}
-                  {user.stats.profile_badge === 'active' && <Star size={10} />}
-                  {user.stats.profile_badge === 'energy' && <Zap size={10} />}
-                  {user.stats.profile_badge === 'silver' && <ShieldCheck size={10} />}
-                  {user.stats.profile_badge === 'gold' && <Crown size={10} />}
-                  {user.stats.profile_badge === 'diamond' && <Star size={10} />}
-                  {user.stats.profile_badge === 'legendary' && <Crown size={10} />}
-                </span>
-              )}
-            </div>
-            <p className="text-gray-400 text-sm mt-0.5">{user?.email || "قم بتسجيل الدخول للوصول لكافة الميزات"}</p>
-            {user?.id && <p className="text-xs text-brand font-bold mt-1">رقم الدخول: #{user.id}</p>}
-            {user?.stats?.user_title && (
-              <p className="text-xs font-bold mt-1 text-purple-600 flex items-center justify-center gap-1"><Award size={11} /> {user.stats.user_title}</p>
-            )}
-          </div>
-
-          {/* أزرار الإجراءات السريعة - 3 أزرار في صف */}
-          {user && (
-            <div className="w-full grid grid-cols-3 gap-2 pt-1">
-              {user.telegram_chat_id ? (
-                <button onClick={handleUnlinkTelegram} className="bg-red-50 text-red-600 p-3 rounded-2xl border border-red-100 flex flex-col items-center gap-1 transition-all active:scale-95">
-                  <LogOut size={18} />
-                  <span className="text-[10px] font-bold">إلغاء تليجرام</span>
-                </button>
-              ) : (
-                <button onClick={handleGenerateLinkingCode} className="bg-blue-50 text-blue-600 p-3 rounded-2xl border border-blue-100 flex flex-col items-center gap-1 transition-all active:scale-95">
-                  <MessageSquare size={18} />
-                  <span className="text-[10px] font-bold">ربط تليجرام</span>
-                </button>
-              )}
-              <button onClick={() => setView({ type: "referral" })} className="bg-brand-light text-brand p-3 rounded-2xl border border-brand-soft flex flex-col items-center gap-1 transition-all active:scale-95">
-                <Plus size={18} />
-                <span className="text-[10px] font-bold">الإحالة</span>
-              </button>
-              <button onClick={() => setView({ type: "payments" })} className="bg-green-50 text-green-600 p-3 rounded-2xl border border-green-100 flex flex-col items-center gap-1 transition-all active:scale-95">
-                <History size={18} />
-                <span className="text-[10px] font-bold">دفعاتي</span>
-              </button>
-            </div>
-          )}
-          {/* زر الترتيب */}
-          {user && (
-            <button onClick={() => setView({ type: "leaderboard" })} className="w-full bg-gradient-to-r from-amber-50 to-yellow-50 text-amber-700 py-2.5 rounded-2xl border border-amber-100 flex items-center justify-center gap-2 transition-all active:scale-95 font-bold text-sm">
-              <Trophy size={18} className="text-amber-500" />
-              الترتيب
-            </button>
-          )}
         </div>
 
-        {/* حالة تليجرام */}
-        {user && (
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${user?.telegram_chat_id ? 'bg-blue-100' : 'bg-orange-100'}`}>
-                <MessageSquare size={16} className={user?.telegram_chat_id ? 'text-blue-600' : 'text-orange-500'} />
-              </div>
-              <div>
-                <p className={`text-sm font-bold ${user?.telegram_chat_id ? 'text-blue-800' : 'text-orange-700'}`}>
-                  {user?.telegram_chat_id ? 'تليجرام مرتبط' : 'تليجرام غير مرتبط'}
-                </p>
-                <p className={`text-[10px] ${user?.telegram_chat_id ? 'text-blue-400' : 'text-orange-400'}`}>
-                  {user?.telegram_chat_id ? 'حسابك مؤمن بالبوت' : 'اربط للحصول على إشعارات'}
-                </p>
-              </div>
-            </div>
-            {user?.telegram_chat_id ? (
-              <button onClick={handleUnlinkTelegram} className="text-[10px] font-bold text-red-500 bg-red-50 px-3 py-1.5 rounded-xl border border-red-100">فك الربط</button>
-            ) : (
-              <button onClick={handleGenerateLinkingCode} className="text-[10px] font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-200">ربط الآن</button>
+        {/* زر معلومات الحساب (أيقونة شخص) */}
+        <div className="flex justify-center -mt-2">
+          <button
+            onClick={() => setView({ type: "profile_details" })}
+            className="p-2 bg-gray-100 hover:bg-brand-light text-gray-500 hover:text-brand rounded-xl transition-all active:scale-90"
+            title="معلومات الحساب التفصيلية"
+          >
+            <UserCircle size={20} />
+          </button>
+        </div>
+
+        {/* رقم الدخول مع الشارة */}
+        {user?.id && (
+          <div className="flex items-center justify-center gap-2">
+            <span className="text-lg font-bold text-brand">#{user.id}</span>
+            {user?.stats?.profile_badge && (
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold badge-${user.stats.profile_badge} inline-flex items-center gap-1`}>
+                {user.stats.profile_badge === 'bronze' && <Award size={10} />}
+                {user.stats.profile_badge === 'active' && <Star size={10} />}
+                {user.stats.profile_badge === 'energy' && <Zap size={10} />}
+                {user.stats.profile_badge === 'silver' && <ShieldCheck size={10} />}
+                {user.stats.profile_badge === 'gold' && <Crown size={10} />}
+                {user.stats.profile_badge === 'diamond' && <Star size={10} />}
+                {user.stats.profile_badge === 'legendary' && <Crown size={10} />}
+              </span>
             )}
+            {user?.is_vip && <span className="vip-badge"><Crown size={10} />VIP</span>}
           </div>
         )}
 
-        {/* نظام المكافآت */}
-        {user && user.stats && (
-          <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Star size={18} className="text-amber-500" />
-                <h3 className="font-bold text-gray-800">نظام المكافآت</h3>
+        {/* اللقب */}
+        {user?.stats?.user_title && (
+          <p className="text-xs font-bold text-purple-600 flex items-center justify-center gap-1">
+            <Award size={11} /> {user.stats.user_title}
+          </p>
+        )}
+
+        {/* 3 أزرار: ربط تليجرام / الإحالة / دفعاتي */}
+        {user && (
+          <div className="grid grid-cols-3 gap-2 pt-1">
+            {user.telegram_chat_id ? (
+              <div className="bg-blue-50 text-blue-600 p-3 rounded-2xl border border-blue-100 flex flex-col items-center gap-1">
+                <MessageSquare size={18} />
+                <span className="text-[10px] font-bold">تليجرام مرتبط</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold bg-amber-50 text-amber-600 px-2 py-1 rounded-lg">
-                  {user.stats.total_recharge_sum.toFixed(2)} $
-                </span>
-                <button onClick={() => setShowAllRewards(!showAllRewards)} className="p-1 hover:bg-gray-100 rounded-lg transition-colors text-gray-400">
-                  {showAllRewards ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                </button>
-              </div>
-            </div>
-            <div className="space-y-4">
-              {REWARD_GOALS.map((goal, index) => {
-                const isClaimed = user.stats!.claimed_reward_index >= index;
-                const isReached = user.stats!.total_recharge_sum >= goal.target;
-                const isCurrent = user.stats!.claimed_reward_index === index - 1;
-                const prevTarget = index === 0 ? 0 : REWARD_GOALS[index - 1].target;
-                const progress = Math.min(100, Math.max(0, ((user.stats!.total_recharge_sum - prevTarget) / (goal.target - prevTarget)) * 100));
-                if (!showAllRewards && !isCurrent) return null;
-                return (
-                  <div key={goal.id} className={`space-y-3 p-4 rounded-2xl border transition-all ${isClaimed ? 'bg-brand-light border-brand-soft' : isCurrent ? 'bg-amber-50 border-amber-100 shadow-sm' : 'bg-gray-50 border-gray-100 opacity-40'}`}>
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="flex items-start gap-2 min-w-0">
-                        <div className={`w-9 h-9 shrink-0 rounded-xl flex items-center justify-center text-base ${isClaimed ? 'bg-brand/10' : isCurrent ? 'bg-amber-100' : 'bg-gray-100'}`}>
-                          {goal.icon}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-bold text-sm text-gray-800">{goal.title}</p>
-                          <p className="text-[10px] text-gray-500 mt-0.5 leading-relaxed">{goal.rewardText}</p>
-                          {(goal as any).rewards?.discount && (
-                            <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
-                              🏷️ خصم {(goal as any).rewards.discount}% مدى الحياة
-                            </span>
-                          )}
-                          {isClaimed && (goal as any).rewards?.frame && (
-                            <span className="inline-flex items-center gap-1 mt-1 ml-1 text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">🖼️ إطار مفعّل</span>
-                          )}
-                          {isClaimed && (goal as any).rewards?.badge && (
-                            <span className="inline-flex items-center gap-1 mt-1 ml-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">🏅 شارة مفعّلة</span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="shrink-0">
-                        {isClaimed ? (
-                          <span className="flex items-center gap-1 text-[10px] font-bold text-brand whitespace-nowrap"><CheckCircle size={13} />تم</span>
-                        ) : isReached ? (
-                          <button
-                            onClick={async () => {
-                              try {
-                                const res = await fetch("/api/rewards/claim", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("authToken") || ""}` }, body: JSON.stringify({ goalIndex: index }) });
-                                const resData = await res.json();
-                                if (res.ok) {
-                                  showToast("🎁 مبروك! تم استلام المكافأة بنجاح", 'success');
-                                  if (resData.stats) { setUser(prev => prev ? { ...prev, stats: resData.stats } : prev); }
-                                  fetchUser(user.id);
-                                } else { showToast(resData.error || "فشل استلام المكافأة", 'error'); }
-                              } catch (error) { 
-  showToast("خطأ في الاتصال", 'error');
-                                }
-                            }}
-                            className="bg-brand text-white px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm active:scale-95 transition-all whitespace-nowrap"
-                          >استلام 🎁</button>
-                        ) : (
-                          <span className="text-[10px] font-bold text-amber-600 whitespace-nowrap">{(goal.target - user.stats!.total_recharge_sum).toFixed(0)} $ متبقي</span>
-                        )}
-                      </div>
-                    </div>
-                    {!isClaimed && (
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[10px] text-gray-400">
-                          <span>{prevTarget} $</span><span>{goal.target} $</span>
-                        </div>
-                        <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                          <div className={`h-full transition-all duration-500 ${isReached ? 'bg-brand' : 'bg-amber-400'}`} style={{ width: `${progress}%` }} />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            ) : (
+              <button onClick={handleGenerateLinkingCode} className="bg-orange-50 text-orange-600 p-3 rounded-2xl border border-orange-100 flex flex-col items-center gap-1 transition-all active:scale-95">
+                <MessageSquare size={18} />
+                <span className="text-[10px] font-bold leading-tight text-center">اربط الآن</span>
+              </button>
+            )}
+            <button onClick={() => setView({ type: "referral" })} className="bg-brand-light text-brand p-3 rounded-2xl border border-brand-soft flex flex-col items-center gap-1 transition-all active:scale-95">
+              <Share2 size={18} />
+              <span className="text-[10px] font-bold">الإحالة</span>
+            </button>
+            <button onClick={() => setView({ type: "payments" })} className="bg-green-50 text-green-600 p-3 rounded-2xl border border-green-100 flex flex-col items-center gap-1 transition-all active:scale-95">
+              <History size={18} />
+              <span className="text-[10px] font-bold">دفعاتي</span>
+            </button>
           </div>
+        )}
+
+        {/* زر نظام المكافآت والترتيب */}
+        {user && (
+          <button onClick={() => setView({ type: "rewards_leaderboard" })} className="w-full bg-gradient-to-r from-amber-50 to-yellow-50 text-amber-700 py-3 rounded-2xl border border-amber-100 flex items-center justify-center gap-2 transition-all active:scale-95 font-bold text-sm">
+            <Trophy size={18} className="text-amber-500" />
+            نظام المكافآت والترتيب
+          </button>
         )}
 
         {/* قائمة الإجراءات */}
@@ -3589,8 +3441,7 @@ export default function App() {
             <ProfileItem icon={<ShieldCheck size={20} />} label="الدعم الخاص (الأولوية)" className="text-amber-600 bg-amber-50/50" onClick={() => showToast("لديك أولوية في الدعم الفني. تواصل معنا عبر الواتساب.", 'info')} />
           )}
           <ProfileItem icon={<Settings size={20} />} label="الإعدادات" onClick={() => setView({ type: "settings" })} />
-          <ProfileItem icon={<Clock size={20} />} label="سياسة الخصوصية" onClick={() => setView({ type: "privacy_policy" })} />
-          <ProfileItem icon={<MessageSquare size={20} />} label="الدعم الفني" onClick={() => setView({ type: "chat" })} className="text-brand relative" badge={user?.unread_support_count > 0 ? user.unread_support_count : undefined} />
+          <ProfileItem icon={<Headphones size={20} />} label="الدعم الفني" onClick={() => setView({ type: "chat" })} className="text-brand relative" badge={user?.unread_support_count > 0 ? user.unread_support_count : undefined} />
           {!!user?.stats?.custom_theme_color && (
             <ProfileItem icon={<Palette size={20} />} label="تخصيص الثيم" onClick={() => setThemeModal({ isOpen: true, color: user.stats.custom_theme_color === 'any' ? '#10b981' : user.stats.custom_theme_color })} className="text-brand" />
           )}
@@ -4327,6 +4178,245 @@ export default function App() {
   };
 
 
+  const RewardsLeaderboardView = () => {
+    const [activeSection, setActiveSection] = useState<'rewards'|'leaderboard'>('rewards');
+    const [showAllRewards, setShowAllRewards] = useState(false);
+    const [leaderboardTab, setLeaderboardTab] = useState<'topup'|'referral'|'activity'>('topup');
+    const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
+    const [leaderboardLoading, setLeaderboardLoading] = useState(true);
+    const [showInfo, setShowInfo] = useState<string|null>(null);
+
+    useEffect(() => {
+      if (activeSection === 'leaderboard') {
+        setLeaderboardLoading(true);
+        setLeaderboardData([]);
+        fetch(`/api/leaderboard/${leaderboardTab}`)
+          .then(r => r.json())
+          .then(d => setLeaderboardData(Array.isArray(d) ? d : []))
+          .catch(() => setLeaderboardData([]))
+          .finally(() => setLeaderboardLoading(false));
+      }
+    }, [activeSection, leaderboardTab]);
+
+    const lbTabs = [
+      { key: 'topup', label: 'أكثر شحناً', icon: <Wallet size={16}/>, color: 'text-green-600', activeBg: 'bg-green-50 border-green-200', desc: 'ترتيب المستخدمين حسب إجمالي مبالغ الشحن.' },
+      { key: 'referral', label: 'أكثر إحالةً', icon: <Share2 size={16}/>, color: 'text-blue-600', activeBg: 'bg-blue-50 border-blue-200', desc: 'ترتيب المستخدمين حسب عدد الأصدقاء المدعوين.' },
+      { key: 'activity', label: 'الأكثر نشاطاً', icon: <Zap size={16}/>, color: 'text-amber-600', activeBg: 'bg-amber-50 border-amber-200', desc: 'ترتيب المستخدمين حسب إجمالي عدد الطلبات.' },
+    ] as const;
+
+    const activeLbTab = lbTabs.find(t => t.key === leaderboardTab)!;
+    const medalIcons = [
+      <div className="w-7 h-7 rounded-full bg-amber-100 flex items-center justify-center"><Trophy size={14} className="text-amber-500"/></div>,
+      <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center"><Trophy size={14} className="text-gray-400"/></div>,
+      <div className="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center"><Trophy size={14} className="text-orange-400"/></div>,
+    ];
+
+    return (
+      <div className="px-4 space-y-4 pb-20">
+        {/* Header */}
+        <div className="flex items-center gap-3 pt-2">
+          <button onClick={() => setView({ type: "main" })} className="p-2 bg-gray-100 rounded-xl text-gray-600 active:scale-90 transition-all">
+            <ArrowRight size={20} />
+          </button>
+          <h2 className="font-bold text-gray-800 text-lg">نظام المكافآت والترتيب</h2>
+        </div>
+
+        {/* زرا التبديل العلويان */}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => setActiveSection('rewards')}
+            className={`py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 border transition-all active:scale-95 ${activeSection === 'rewards' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-white border-gray-100 text-gray-400'}`}
+          >
+            <Star size={16} className={activeSection === 'rewards' ? 'text-amber-500' : 'text-gray-300'} />
+            نظام المكافآت
+          </button>
+          <button
+            onClick={() => setActiveSection('leaderboard')}
+            className={`py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 border transition-all active:scale-95 ${activeSection === 'leaderboard' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-white border-gray-100 text-gray-400'}`}
+          >
+            <Trophy size={16} className={activeSection === 'leaderboard' ? 'text-amber-500' : 'text-gray-300'} />
+            الترتيب
+          </button>
+        </div>
+
+        {/* قسم نظام المكافآت */}
+        {activeSection === 'rewards' && user && user.stats && (
+          <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Star size={18} className="text-amber-500" />
+                <h3 className="font-bold text-gray-800">نظام المكافآت</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold bg-amber-50 text-amber-600 px-2 py-1 rounded-lg">
+                  {user.stats.total_recharge_sum.toFixed(2)} $
+                </span>
+                <button onClick={() => setShowAllRewards(!showAllRewards)} className="p-1 hover:bg-gray-100 rounded-lg transition-colors text-gray-400">
+                  {showAllRewards ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-4">
+              {REWARD_GOALS.map((goal, index) => {
+                const isClaimed = user.stats!.claimed_reward_index >= index;
+                const isReached = user.stats!.total_recharge_sum >= goal.target;
+                const isCurrent = user.stats!.claimed_reward_index === index - 1;
+                const prevTarget = index === 0 ? 0 : REWARD_GOALS[index - 1].target;
+                const progress = Math.min(100, Math.max(0, ((user.stats!.total_recharge_sum - prevTarget) / (goal.target - prevTarget)) * 100));
+                if (!showAllRewards && !isCurrent) return null;
+                return (
+                  <div key={goal.id} className={`space-y-3 p-4 rounded-2xl border transition-all ${isClaimed ? 'bg-brand-light border-brand-soft' : isCurrent ? 'bg-amber-50 border-amber-100 shadow-sm' : 'bg-gray-50 border-gray-100 opacity-40'}`}>
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex items-start gap-2 min-w-0">
+                        <div className={`w-9 h-9 shrink-0 rounded-xl flex items-center justify-center text-base ${isClaimed ? 'bg-brand/10' : isCurrent ? 'bg-amber-100' : 'bg-gray-100'}`}>
+                          {goal.icon}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-sm text-gray-800">{goal.title}</p>
+                          <p className="text-[10px] text-gray-500 mt-0.5 leading-relaxed">{goal.rewardText}</p>
+                          {(goal as any).rewards?.discount && (
+                            <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
+                              🏷️ خصم {(goal as any).rewards.discount}% مدى الحياة
+                            </span>
+                          )}
+                          {isClaimed && (goal as any).rewards?.frame && (
+                            <span className="inline-flex items-center gap-1 mt-1 ml-1 text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">🖼️ إطار مفعّل</span>
+                          )}
+                          {isClaimed && (goal as any).rewards?.badge && (
+                            <span className="inline-flex items-center gap-1 mt-1 ml-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">🏅 شارة مفعّلة</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="shrink-0">
+                        {isClaimed ? (
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-brand whitespace-nowrap"><CheckCircle size={13} />تم</span>
+                        ) : isReached ? (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const res = await fetch("/api/rewards/claim", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("authToken") || ""}` }, body: JSON.stringify({ goalIndex: index }) });
+                                const resData = await res.json();
+                                if (res.ok) {
+                                  showToast("🎁 مبروك! تم استلام المكافأة بنجاح", 'success');
+                                  if (resData.stats) { setUser(prev => prev ? { ...prev, stats: resData.stats } : prev); }
+                                  fetchUser(user.id);
+                                } else { showToast(resData.error || "فشل استلام المكافأة", 'error'); }
+                              } catch { showToast("خطأ في الاتصال", 'error'); }
+                            }}
+                            className="bg-brand text-white px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm active:scale-95 transition-all whitespace-nowrap"
+                          >استلام 🎁</button>
+                        ) : (
+                          <span className="text-[10px] font-bold text-amber-600 whitespace-nowrap">{(goal.target - user.stats!.total_recharge_sum).toFixed(0)} $ متبقي</span>
+                        )}
+                      </div>
+                    </div>
+                    {!isClaimed && (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[10px] text-gray-400">
+                          <span>{prevTarget} $</span><span>{goal.target} $</span>
+                        </div>
+                        <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                          <div className={`h-full transition-all duration-500 ${isReached ? 'bg-brand' : 'bg-amber-400'}`} style={{ width: `${progress}%` }} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* قسم الترتيب */}
+        {activeSection === 'leaderboard' && (
+          <>
+            {/* تبويبات الترتيب */}
+            <div className="grid grid-cols-3 gap-2">
+              {lbTabs.map(t => (
+                <div key={t.key} className="relative">
+                  <button onClick={() => { setLeaderboardTab(t.key); setShowInfo(null); }}
+                    className={`w-full p-3 rounded-2xl border text-center transition-all active:scale-95 ${leaderboardTab === t.key ? t.activeBg : 'bg-white border-gray-100'}`}>
+                    <div className={`flex justify-center mb-1 ${leaderboardTab === t.key ? t.color : 'text-gray-400'}`}>{t.icon}</div>
+                    <p className={`text-[10px] font-bold ${leaderboardTab === t.key ? t.color : 'text-gray-400'}`}>{t.label}</p>
+                  </button>
+                  <button
+                    onClick={() => setShowInfo(showInfo === t.key ? null : t.key)}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-white border border-gray-200 rounded-full flex items-center justify-center shadow-sm text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <HelpCircle size={11}/>
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {showInfo && (
+              <div className={`p-3 rounded-2xl border text-xs text-gray-600 leading-relaxed ${lbTabs.find(t=>t.key===showInfo)?.activeBg || 'bg-gray-50 border-gray-100'}`}>
+                <div className="flex items-start gap-2">
+                  <Info size={14} className="mt-0.5 shrink-0 text-gray-400"/>
+                  <p>{lbTabs.find(t => t.key === showInfo)?.desc}</p>
+                </div>
+              </div>
+            )}
+
+            {leaderboardLoading ? (
+              <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"/></div>
+            ) : leaderboardData.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <Trophy size={40} className="mx-auto mb-3 opacity-20"/>
+                <p className="text-sm">لا توجد بيانات بعد</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {leaderboardData.map((entry: any, i: number) => (
+                  <div key={i} className={`flex items-center gap-3 p-3 rounded-2xl border transition-all ${
+                    i === 0 ? 'bg-amber-50 border-amber-200 shadow-sm' :
+                    i === 1 ? 'bg-gray-50 border-gray-200' :
+                    i === 2 ? 'bg-orange-50 border-orange-100' :
+                    'bg-white border-gray-100'
+                  }`}>
+                    <div className="w-7 shrink-0 flex justify-center">
+                      {i < 3 ? medalIcons[i] : <span className="text-xs font-black text-gray-400">#{i+1}</span>}
+                    </div>
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 overflow-hidden ${theme.bgLight}`}>
+                      {entry.avatar_url
+                        ? <img loading="lazy" src={entry.avatar_url} className="w-full h-full object-cover" referrerPolicy="no-referrer"/>
+                        : <User size={18} className={theme.icon}/>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm text-gray-800 truncate">{entry.name || 'مجهول'}</p>
+                      {entry.badge && (
+                        <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">{entry.badge}</span>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0 flex items-center gap-1">
+                      <div className={i < 3 ? activeLbTab.color : 'text-gray-400'}>{activeLbTab.icon}</div>
+                      <div>
+                        <p className={`font-black text-sm ${i < 3 ? activeLbTab.color : 'text-gray-700'}`}>{entry.value}</p>
+                        <p className="text-[9px] text-gray-400">{entry.unit}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {user && leaderboardData.length > 0 && (() => {
+              const myIdx = leaderboardData.findIndex((e:any) => String(e.user_id) === String(user.id));
+              return (
+                <div className={`rounded-2xl p-3 text-center border ${myIdx >= 0 ? 'bg-brand-light border-brand-soft' : 'bg-gray-50 border-gray-100'}`}>
+                  {myIdx >= 0
+                    ? <p className="text-xs font-bold text-brand">أنت في المركز #{myIdx + 1} 🎉</p>
+                    : <p className="text-xs text-gray-400">أنت لست في الترتيب حتى الآن · استمر!</p>
+                  }
+                </div>
+              );
+            })()}
+          </>
+        )}
+      </div>
+    );
+  };
+
   const LeaderboardView = () => {
     const [tab, setTab] = useState<'topup'|'referral'|'activity'>('topup');
     const [data, setData] = useState<any[]>([]);
@@ -4497,6 +4587,30 @@ export default function App() {
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [avatarUploading, setAvatarUploading] = useState(false);
+
+    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      setAvatarUploading(true);
+      try {
+        const formData = new FormData();
+        formData.append("image", file);
+        const imgbbKey = (import.meta as any).env.VITE_IMGBB_API_KEY || "97ffbf56fe1a203445531d664cd4b928";
+        const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, { method: "POST", body: formData });
+        const data = await res.json();
+        if (data.success) {
+          const token = localStorage.getItem("authToken") || "";
+          const updateRes = await fetch(`/api/user/${user?.id}/avatar`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            body: JSON.stringify({ avatar_url: data.data.url })
+          });
+          if (updateRes.ok) { fetchUser(user!.id); showToast("✅ تم تحديث الصورة الشخصية بنجاح", 'success'); }
+          else { showToast("فشل تحديث الصورة", 'error'); }
+        } else { showToast("فشل رفع الصورة", 'error'); }
+      } catch { showToast("فشل رفع الصورة", 'error'); } finally { setAvatarUploading(false); }
+    };
 
     const handleUpdate = async () => {
       if (!user) return;
@@ -4510,7 +4624,6 @@ export default function App() {
         });
         const data = await res.json();
         if (res.ok) {
-          // reload full user object to avoid partial data crash
           await fetchUser(user!.id);
           setView({ type: "success", data: "تم تحديث المعلومات بنجاح" });
         } else {
@@ -4529,39 +4642,60 @@ export default function App() {
           <button onClick={() => setView({ type: "main" })} className="p-2 bg-gray-100 rounded-full">
             <ArrowRight size={20} className="text-gray-600" />
           </button>
-          <h2 className="text-xl font-bold text-gray-800">تعديل المعلومات الشخصية</h2>
+          <h2 className="text-xl font-bold text-gray-800">تعديل الملف الشخصي</h2>
+        </div>
+
+        {/* صورة الحساب مع زر التغيير */}
+        <div className="flex flex-col items-center gap-3">
+          <div className="relative">
+            <div className={`w-24 h-24 ${theme.bgLight} rounded-full flex items-center justify-center ${theme.icon} border-4 border-white shadow-lg overflow-hidden`}>
+              {user?.avatar_url ? (
+                <img loading="lazy" src={user.avatar_url} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : <User size={48} />}
+              {avatarUploading && (
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-full">
+                  <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              )}
+            </div>
+            <label className="absolute bottom-0 right-0 bg-brand text-white p-2 rounded-full cursor-pointer shadow-lg hover:opacity-90 transition-colors">
+              <Plus size={16} />
+              <input type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} disabled={avatarUploading} />
+            </label>
+          </div>
+          <p className="text-xs text-gray-400">اضغط على + لتغيير الصورة</p>
         </div>
 
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-gray-700">الاسم الكامل</label>
-                <input 
-                  type="text" value={name} onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-gray-700">البريد الإلكتروني</label>
-                <input 
-                  type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-gray-700">رقم الهاتف</label>
-                <input 
-                  type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-gray-700">كلمة المرور الجديدة (اختياري)</label>
-                <input 
-                  type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                  placeholder="اتركها فارغة إذا لم ترد التغيير"
-                  className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand"
-                />
-              </div>
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-gray-700">الاسم الكامل</label>
+            <input 
+              type="text" value={name} onChange={(e) => setName(e.target.value)}
+              className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-gray-700">البريد الإلكتروني</label>
+            <input 
+              type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+              className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-gray-700">رقم الهاتف</label>
+            <input 
+              type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+              className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-gray-700">تغيير كلمة المرور (اختياري)</label>
+            <input 
+              type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+              placeholder="اتركها فارغة إذا لم ترد التغيير"
+              className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand"
+            />
+          </div>
 
           {error && <p className="text-red-500 text-sm text-center font-medium">{error}</p>}
 
@@ -4587,7 +4721,7 @@ export default function App() {
               }}
               className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-bold text-sm"
             >
-              تحميل بيانات الحساب (نسخة احتياطية)
+              تنزيل نسخة من بياناتي
             </button>
           </div>
         </div>
@@ -5392,6 +5526,7 @@ export default function App() {
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50 overflow-hidden">
+        {/* تفعيل الإشعارات */}
         <div className="p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Bell size={20} className="text-gray-400" />
@@ -5404,9 +5539,10 @@ export default function App() {
             <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
           </button>
         </div>
+        {/* الوضع الليلي */}
         <div className="p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <ImageIcon size={20} className="text-gray-400" />
+            <Moon size={20} className="text-gray-400" />
             <span className="font-medium text-gray-700">الوضع الليلي</span>
           </div>
           <button 
@@ -5416,6 +5552,34 @@ export default function App() {
             <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${isDarkMode ? 'right-1' : 'left-1'}`}></div>
           </button>
         </div>
+        {/* سياسة الخصوصية */}
+        <button onClick={() => setView({ type: "privacy_policy" })} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+          <div className="flex items-center gap-3">
+            <Shield size={20} className="text-gray-400" />
+            <span className="font-medium text-gray-700">سياسة الخصوصية</span>
+          </div>
+          <ChevronRight size={18} className="text-gray-300" />
+        </button>
+        {/* أولوية الدعم - تظهر فقط إن كان يملكها */}
+        {!!user?.stats?.has_special_support && (
+          <button onClick={() => showToast("لديك أولوية في الدعم الفني. تواصل معنا عبر الواتساب.", 'info')} className="w-full p-4 flex items-center justify-between hover:bg-amber-50 transition-colors">
+            <div className="flex items-center gap-3">
+              <ShieldCheck size={20} className="text-amber-500" />
+              <span className="font-medium text-amber-600">أولوية الدعم</span>
+            </div>
+            <ChevronRight size={18} className="text-amber-300" />
+          </button>
+        )}
+        {/* تخصيص الثيم - تظهر فقط إن كان يملكها */}
+        {!!user?.stats?.custom_theme_color && (
+          <button onClick={() => setThemeModal({ isOpen: true, color: user.stats.custom_theme_color === 'any' ? '#10b981' : user.stats.custom_theme_color })} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+            <div className="flex items-center gap-3">
+              <Palette size={20} className="text-brand" />
+              <span className="font-medium text-brand">تخصيص الثيم</span>
+            </div>
+            <ChevronRight size={18} className="text-gray-300" />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -8097,6 +8261,7 @@ const AdminPanel = ({
                   <>
                     {view.type === "main" && <ProfileView />}
                     {view.type === "profile_details" && <ProfileDetailsView />}
+                    {view.type === "rewards_leaderboard" && <RewardsLeaderboardView />}
                     {view.type === "leaderboard" && <LeaderboardView />}
                     {view.type === "payments" && <PaymentsView />}
                     {view.type === "edit_profile" && <EditProfileView />}
