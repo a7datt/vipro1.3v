@@ -660,57 +660,54 @@ async function startServer() {
     }
   });
 
-  // ===== أكثر المنتجات شراءً =====
+  // ===== أكثر المنتجات شراءً (من الطلبات المقبولة/المكتملة فقط) =====
   app.get("/api/most-purchased", authenticate, async (req, res) => {
     try {
-      // نجلب المنتجات مرتبة حسب عدد مرات الشراء من order_items
-      const { data, error } = await supabase.rpc
-        ? await (async () => {
-            // استعلام مجمّع: عدد مرات الشراء لكل منتج من الطلبات المكتملة
-            const { data: items, error: itemsErr } = await supabase
-              .from("order_items")
-              .select("product_id, quantity, orders!inner(status)")
-              .eq("orders.status", "completed");
-            if (itemsErr) throw itemsErr;
+      // جلب order_items المرتبطة بطلبات مكتملة (completed) فقط
+      const { data: items, error: itemsErr } = await supabase
+        .from("order_items")
+        .select("product_id, quantity, orders!inner(status)")
+        .eq("orders.status", "completed");
 
-            // تجميع العدد لكل منتج
-            const countMap = new Map<number, number>();
-            for (const item of (items || [])) {
-              const pid = item.product_id;
-              countMap.set(pid, (countMap.get(pid) || 0) + (Number(item.quantity) || 1));
-            }
+      if (itemsErr) throw itemsErr;
 
-            // ترتيب وأخذ أكثر 9
-            const sorted = [...countMap.entries()]
-              .sort((a, b) => b[1] - a[1])
-              .slice(0, 9);
+      // تجميع عدد مرات الشراء لكل منتج (نعدّ الكمية الكلية)
+      const countMap = new Map<number, number>();
+      for (const item of (items || [])) {
+        const pid = Number(item.product_id);
+        if (!pid) continue;
+        countMap.set(pid, (countMap.get(pid) || 0) + (Number(item.quantity) || 1));
+      }
 
-            if (sorted.length === 0) return { data: [], error: null };
+      if (countMap.size === 0) return res.json([]);
 
-            const ids = sorted.map(([id]) => id);
-            const { data: prods, error: prodsErr } = await supabase
-              .from("products")
-              .select("id, name, price, image_url, store_type")
-              .in("id", ids)
-              .eq("available", true);
-            if (prodsErr) throw prodsErr;
+      // ترتيب تنازلياً وأخذ أكثر 9 منتجاً
+      const sorted = [...countMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 9);
 
-            // إضافة عدد مرات الشراء لكل منتج وترتيبها
-            const prodMap = new Map((prods || []).map((p: any) => [p.id, p]));
-            const result = sorted
-              .map(([id, count]) => {
-                const prod = prodMap.get(id);
-                if (!prod) return null;
-                return { ...prod, purchase_count: count };
-              })
-              .filter(Boolean);
+      const ids = sorted.map(([id]) => id);
 
-            return { data: result, error: null };
-          })()
-        : { data: [], error: null };
+      // جلب تفاصيل المنتجات (المتاحة فقط)
+      const { data: prods, error: prodsErr } = await supabase
+        .from("products")
+        .select("id, name, price, image_url, store_type")
+        .in("id", ids)
+        .eq("available", true);
 
-      if (error) throw error;
-      res.json(Array.isArray(data) ? data : []);
+      if (prodsErr) throw prodsErr;
+
+      // دمج البيانات وترتيبها بنفس ترتيب الأكثر شراءً
+      const prodMap = new Map((prods || []).map((p: any) => [Number(p.id), p]));
+      const result = sorted
+        .map(([id, count]) => {
+          const prod = prodMap.get(id);
+          if (!prod) return null;
+          return { ...prod, purchase_count: count }; // purchase_count = مجموع الكميات المشتراة
+        })
+        .filter(Boolean);
+
+      res.json(result);
     } catch (e: any) {
       safeError(res, e);
     }
