@@ -32,9 +32,22 @@
     @apply bg-[var(--bg-primary)] text-[var(--text-primary)] transition-colors duration-300;
   }
 }
+/* خط Cairo الناعم — مطبق على كامل التطبيق */
+body, * {
+    font-family: "Cairo", ui-sans-serif, system-ui, sans-serif !important;
+}
 body {
     font-family: "Cairo", ui-sans-serif, system-ui, sans-serif;
+    font-weight: 400;
 }
+/* تخفيف الخطوط العريضة ليكون الخط أكثر نعومة */
+.font-black    { font-weight: 700 !important; }
+.font-extrabold { font-weight: 700 !important; }
+.font-bold     { font-weight: 600 !important; }
+.font-semibold { font-weight: 500 !important; }
+.font-medium   { font-weight: 400 !important; }
+.font-normal   { font-weight: 400 !important; }
+.font-light    { font-weight: 300 !important; }
 .splash-screen {
   position: fixed;
   inset: 0;

@@ -1413,7 +1413,7 @@ export default function App() {
             }}
             className={`text-sm font-medium border-0 outline-none bg-transparent ${theme.text} cursor-pointer`}
           >
-            <option value="categories">-- اختر الترتيب --</option>
+            <option value="categories">اختر الترتيب</option>
             <option value="most_purchased">أكثر المنتجات شراءً</option>
             <option value="favorites">مفضلاتي</option>
           </select>
@@ -1510,7 +1510,7 @@ export default function App() {
                 <div className="w-full px-1 py-1.5">
                   <p className="font-bold text-gray-700 text-[10px] text-center leading-tight truncate">{prod.name}</p>
                   <p className={`${theme.text} text-[10px] text-center font-bold`}>{parseFloat(prod.price || 0).toFixed(2)}$</p>
-                  <p className="text-gray-400 text-[9px] text-center">🛒 {prod.purchase_count} مرة</p>
+                  <p className="text-gray-400 text-[9px] text-center">🛒 تم شراؤه {prod.purchase_count} {prod.purchase_count === 1 ? "مرة" : "مرات"}</p>
                 </div>
               </motion.div>
             ))}
@@ -3105,7 +3105,7 @@ export default function App() {
 
         {/* Syrbit Copyright */}
         <div className="flex justify-center py-4">
-          <a href="https://wa.me/212773963897" target="_blank" rel="noopener noreferrer"
+          <a href="https://chat.whatsapp.com/DELXtdEh9ua5edFTupESNU" target="_blank" rel="noopener noreferrer"
             className="flex items-center gap-1.5 text-[10px] text-gray-400 hover:text-purple-500 transition-colors">
             <span>برمجة شركة</span>
             <span className="font-black text-purple-500">Syrbit</span>
@@ -6352,7 +6352,7 @@ const AdminElementsTab = ({categories, subcategories, subSubCategories, fetchCat
 
     {/* Syrbit Copyright */}
     <div className="flex justify-center pb-4 pt-2">
-      <a href="https://wa.me/212773963897" target="_blank" rel="noopener noreferrer"
+      <a href="https://chat.whatsapp.com/DELXtdEh9ua5edFTupESNU" target="_blank" rel="noopener noreferrer"
         className="flex items-center gap-1.5 text-[10px] text-gray-400 hover:text-purple-500 transition-colors">
         <span>برمجة شركة</span>
         <span className="font-black text-purple-500">Syrbit</span>
