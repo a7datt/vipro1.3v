@@ -660,50 +660,69 @@ async function startServer() {
     }
   });
 
-  // ===== أكثر المنتجات شراءً (من الطلبات المقبولة/المكتملة فقط) =====
+  // ===== أكثر المنتجات شراءً (شروط صارمة: طلبات مكتملة فقط، عدد الطلبات لا الكميات) =====
   app.get("/api/most-purchased", authenticate, async (req, res) => {
     try {
-      // جلب order_items المرتبطة بطلبات مكتملة (completed) فقط
+      // جلب order_items المرتبطة بطلبات مكتملة فقط
+      // نجلب order_id لنعدّ الطلبات الفريدة لا الكميات (تفادياً لمنتجات الكمية الكبيرة)
       const { data: items, error: itemsErr } = await supabase
         .from("order_items")
-        .select("product_id, quantity, orders!inner(status)")
+        .select("product_id, order_id, orders!inner(status)")
         .eq("orders.status", "completed");
 
       if (itemsErr) throw itemsErr;
 
-      // تجميع عدد مرات الشراء لكل منتج (نعدّ الكمية الكلية)
-      const countMap = new Map<number, number>();
+      // نعدّ عدد الطلبات الفريدة لكل منتج (ليس الكميات)
+      // هذا يمنع ظهور منتجات الكمية الكبيرة (مثل 4,900,000 وحدة من طلب واحد) بأرقام مضخّمة
+      const orderCountMap = new Map<number, Set<number>>();
       for (const item of (items || [])) {
         const pid = Number(item.product_id);
-        if (!pid) continue;
-        countMap.set(pid, (countMap.get(pid) || 0) + (Number(item.quantity) || 1));
+        const oid = Number(item.order_id);
+        if (!pid || !oid) continue;
+        if (!orderCountMap.has(pid)) orderCountMap.set(pid, new Set());
+        orderCountMap.get(pid)!.add(oid);
       }
 
-      if (countMap.size === 0) return res.json([]);
+      if (orderCountMap.size === 0) return res.json([]);
+
+      // تحويل إلى عدد الطلبات الفريدة، مع شرط: على الأقل طلبَين مكتملَين
+      const countEntries: [number, number][] = [];
+      for (const [pid, orderSet] of orderCountMap.entries()) {
+        const orderCount = orderSet.size;
+        if (orderCount >= 2) { // شرط صارم: لا يظهر منتج اشتراه شخص واحد فقط
+          countEntries.push([pid, orderCount]);
+        }
+      }
+
+      if (countEntries.length === 0) return res.json([]);
 
       // ترتيب تنازلياً وأخذ أكثر 9 منتجاً
-      const sorted = [...countMap.entries()]
+      const sorted = countEntries
         .sort((a, b) => b[1] - a[1])
         .slice(0, 9);
 
       const ids = sorted.map(([id]) => id);
 
-      // جلب تفاصيل المنتجات (المتاحة فقط)
+      // جلب تفاصيل المنتجات — شروط صارمة: متاح + سعر > 0
       const { data: prods, error: prodsErr } = await supabase
         .from("products")
-        .select("id, name, price, image_url, store_type")
+        .select("id, name, price, price_per_unit, image_url, store_type")
         .in("id", ids)
         .eq("available", true);
 
       if (prodsErr) throw prodsErr;
 
-      // دمج البيانات وترتيبها بنفس ترتيب الأكثر شراءً
+      // دمج البيانات مع تصفية المنتجات التي سعرها 0
       const prodMap = new Map((prods || []).map((p: any) => [Number(p.id), p]));
       const result = sorted
         .map(([id, count]) => {
           const prod = prodMap.get(id);
           if (!prod) return null;
-          return { ...prod, purchase_count: count }; // purchase_count = مجموع الكميات المشتراة
+          // شرط صارم: يجب أن يكون للمنتج سعر حقيقي > 0
+          const effectivePrice = parseFloat(String(prod.price || 0));
+          const effectivePpu  = parseFloat(String(prod.price_per_unit || 0));
+          if (effectivePrice <= 0 && effectivePpu <= 0) return null;
+          return { ...prod, purchase_count: count }; // purchase_count = عدد الطلبات الفريدة المكتملة
         })
         .filter(Boolean);
 
