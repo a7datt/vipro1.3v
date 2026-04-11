@@ -351,13 +351,17 @@ const ToastContainer = () => {
     error: 'bg-red-500',
     info: 'bg-blue-500',
   };
-  const icons: Record<ToastType, string> = { success: '✅', error: '❌', info: 'ℹ️' };
+  const iconMap: Record<ToastType, React.ReactNode> = {
+    success: <CheckCircle size={16} className="shrink-0" />,
+    error:   <XCircle    size={16} className="shrink-0" />,
+    info:    <Info       size={16} className="shrink-0" />,
+  };
   return (
     <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 items-center pointer-events-none" style={{minWidth:'260px',maxWidth:'90vw'}}>
       {toasts.map(t => (
-        <div key={t.id} className={`${colors[t.type]} text-white px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2 text-sm font-bold animate-bounce-in`}
+        <div key={t.id} className={`${colors[t.type]} text-white px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2 text-sm font-bold`}
           style={{animation:'toastIn 0.3s ease, toastOut 0.4s ease 3.1s forwards'}}>
-          <span>{icons[t.type]}</span>
+          {iconMap[t.type]}
           <span>{t.message}</span>
         </div>
       ))}
@@ -657,11 +661,13 @@ const WalletChargeView: React.FC<WalletChargeViewProps> = React.memo(({
       <div className="grid grid-cols-3 gap-3">
         {paymentMethods.map(method => (
           <button key={method.id} onClick={() => setSelectedMethod(method)}
-            className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col items-center gap-2 hover:border-brand-soft transition-colors">
-            <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden">
+            className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden hover:border-brand-soft transition-colors active:scale-95">
+            <div className="w-full aspect-square overflow-hidden bg-gray-50">
               <img loading="lazy" src={method.image_url || "https://picsum.photos/seed/pay/100/100"} alt={method.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             </div>
-            <span className="font-bold text-gray-800 text-[10px] text-center">{method.name}</span>
+            <div className="px-2 py-1.5">
+              <span className="font-bold text-gray-800 text-[10px] text-center block leading-tight">{method.name}</span>
+            </div>
           </button>
         ))}
       </div>
@@ -3153,6 +3159,26 @@ export default function App() {
 
   const OrdersView = () => {
     const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
+    const [filterStatus, setFilterStatus] = useState<'all'|'completed'|'failed'|'pending'>('all');
+
+    const completedCount = orders.filter(o => o.status === 'completed').length;
+    const failedCount    = orders.filter(o => o.status === 'failed' || o.status === 'cancelled').length;
+    const pendingCount   = orders.filter(o => o.status !== 'completed' && o.status !== 'failed' && o.status !== 'cancelled').length;
+
+    const filteredOrders = orders.filter(o => {
+      if (filterStatus === 'all')       return true;
+      if (filterStatus === 'completed') return o.status === 'completed';
+      if (filterStatus === 'failed')    return o.status === 'failed' || o.status === 'cancelled';
+      if (filterStatus === 'pending')   return o.status !== 'completed' && o.status !== 'failed' && o.status !== 'cancelled';
+      return true;
+    });
+
+    const filters: { key: 'all'|'completed'|'failed'|'pending'; label: string; count?: number; color: string }[] = [
+      { key: 'all',       label: 'الكل',         color: 'bg-gray-800 text-white' },
+      { key: 'completed', label: 'مكتملة',  count: completedCount, color: 'bg-green-500 text-white' },
+      { key: 'failed',    label: 'مرفوضة',  count: failedCount,    color: 'bg-red-500 text-white' },
+      { key: 'pending',   label: 'قيد المراجعة', count: pendingCount, color: 'bg-blue-500 text-white' },
+    ];
 
     const getOrderCodes = (metaStr: string): string[] => {
       try {
@@ -3199,10 +3225,33 @@ export default function App() {
     };
 
     return (
-      <div className="px-4 space-y-6 pb-20">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6">طلباتي</h2>
+      <div className="px-4 space-y-4 pb-20">
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">طلباتي</h2>
+
+        {/* شريط التصفية */}
+        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+          {filters.map(f => (
+            <button
+              key={f.key}
+              onClick={() => { setFilterStatus(f.key); setExpandedOrderId(null); }}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all active:scale-95 border ${
+                filterStatus === f.key
+                  ? f.color + ' border-transparent shadow-sm'
+                  : 'bg-white border-gray-100 text-gray-500'
+              }`}
+            >
+              {f.label}
+              {f.count !== undefined && (
+                <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${
+                  filterStatus === f.key ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600'
+                }`}>{f.count}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
         <div className="space-y-3">
-          {orders.map(order => (
+          {filteredOrders.map(order => (
             <div key={order.id} className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
               <div
                 onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
@@ -3323,13 +3372,17 @@ export default function App() {
               )}
             </div>
           ))}
-          {orders.length === 0 && (
-            <div className="text-center py-20 space-y-4">
+          {filteredOrders.length === 0 && (
+            <div className="text-center py-16 space-y-4">
               <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto text-gray-300">
                 <ShoppingBag size={40} />
               </div>
-              <p className="text-gray-400">لم تقم بأي طلبات بعد</p>
-              <button onClick={() => setActiveTab("home")} className="text-brand font-bold">ابدأ التسوق الآن</button>
+              <p className="text-gray-400">
+                {filterStatus === 'all' ? 'لم تقم بأي طلبات بعد' : 'لا توجد طلبات في هذا التصنيف'}
+              </p>
+              {filterStatus === 'all' && (
+                <button onClick={() => setActiveTab("home")} className="text-brand font-bold">ابدأ التسوق الآن</button>
+              )}
             </div>
           )}
         </div>
