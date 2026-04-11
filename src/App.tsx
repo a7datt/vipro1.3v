@@ -1540,13 +1540,45 @@ export default function App() {
                           setPageLoading(false);
                         } else if (fav._fav_type === "subcategory") {
                           setPageLoading(true);
-                          setView({ type: "sub_sub_categories", id: fav.id, data: fav.name, catId: fav.category_id });
+                          const subSubs = await fetchSubSubCategories(fav.id);
+                          await fetchProducts(fav.id);
+                          if (subSubs.length > 0) {
+                            setView({ type: "sub_sub_categories", id: fav.id, data: fav.name, catId: fav.category_id });
+                          } else {
+                            setView({ type: "products", id: fav.id, data: fav.name, fromSubSub: false, catId: fav.category_id });
+                          }
                           setPageLoading(false);
                         } else if (fav._fav_type === "sub_sub_category") {
                           setPageLoading(true);
                           await fetchProducts(fav.id, true);
                           setView({ type: "products", id: fav.id, data: fav.name, fromSubSub: true, catId: fav.category_id, subId: fav.subcategory_id });
                           setPageLoading(false);
+                        } else if (fav._fav_type === "product") {
+                          setPageLoading(true);
+                          // جلب المنتجات لاسترجاع بيانات المنتج الكاملة
+                          const subId = fav._view_id;
+                          const isSubSub = fav._view_fromSubSub ?? true;
+                          await fetchProducts(subId, isSubSub);
+                          setView({
+                            type: "products",
+                            id: subId,
+                            data: fav._view_data,
+                            fromSubSub: isSubSub,
+                            catId: fav._view_catId,
+                            subId: fav._view_subId,
+                            subName: fav._view_subName,
+                          });
+                          setPageLoading(false);
+                          // فتح صفحة الشراء مباشرة
+                          setTimeout(() => {
+                            if (!user) return setView({ type: "login" });
+                            if (fav.store_type === 'quick_order') {
+                              setView({ type: "quick_order", data: fav });
+                            } else {
+                              setCheckoutQuantity(parseInt(String(fav.min_quantity)) || 0);
+                              setView({ type: "checkout", data: fav });
+                            }
+                          }, 150);
                         }
                       }}
                       className="w-full bg-white rounded-xl border border-yellow-300 shadow-sm flex flex-col items-center overflow-hidden"
@@ -1645,10 +1677,10 @@ export default function App() {
                   setPageLoading(false);
                 }}
                 onContextMenu={e => e.preventDefault()}
-                onTouchStart={e => { lpTimer = setTimeout(() => useLongPressHandlers({ ...sub, _fav_key: favKey, _fav_type: "subcategory", _fav_label: sub.name, _fav_image: sub.image_url }, e), 600); }}
+                onTouchStart={e => { lpTimer = setTimeout(() => useLongPressHandlers({ ...sub, _fav_key: favKey, _fav_type: "subcategory", _fav_label: sub.name, _fav_image: sub.image_url, category_id: view.id }, e), 600); }}
                 onTouchEnd={() => clearTimeout(lpTimer)}
                 onTouchMove={() => clearTimeout(lpTimer)}
-                onMouseDown={e => { lpTimer = setTimeout(() => useLongPressHandlers({ ...sub, _fav_key: favKey, _fav_type: "subcategory", _fav_label: sub.name, _fav_image: sub.image_url }, e), 600); }}
+                onMouseDown={e => { lpTimer = setTimeout(() => useLongPressHandlers({ ...sub, _fav_key: favKey, _fav_type: "subcategory", _fav_label: sub.name, _fav_image: sub.image_url, category_id: view.id }, e), 600); }}
                 onMouseUp={() => clearTimeout(lpTimer)}
                 onMouseLeave={() => clearTimeout(lpTimer)}
                 className={`bg-white rounded-2xl border ${isFavorite(favKey) ? "border-yellow-400" : "border-gray-100"} shadow-sm flex flex-col items-center overflow-hidden active:scale-95 transition-transform relative`}
@@ -1823,11 +1855,23 @@ export default function App() {
         <div className="grid grid-cols-1 gap-4">
           {products.map(prod => {
             const isUnavailable = prod.available === false;
+            let lpTimerProd: any = null;
             return (
-            <div key={prod.id} className={`bg-white p-4 rounded-2xl border shadow-sm flex flex-col gap-4 transition-all ${isUnavailable ? "border-gray-100 opacity-60 grayscale" : "border-gray-100"}`}>
+            <div
+              key={prod.id}
+              className={`bg-white p-4 rounded-2xl border shadow-sm flex flex-col gap-4 transition-all ${isUnavailable ? "border-gray-100 opacity-60 grayscale" : isFavorite(`prod_${prod.id}`) ? "border-yellow-400" : "border-gray-100"}`}
+              onContextMenu={e => e.preventDefault()}
+              onTouchStart={e => { lpTimerProd = setTimeout(() => useLongPressHandlers({ ...prod, _fav_key: `prod_${prod.id}`, _fav_type: "product", _fav_label: prod.name, _fav_image: prod.image_url, _view_id: view.id, _view_data: view.data, _view_fromSubSub: view.fromSubSub, _view_catId: view.catId, _view_subId: view.subId, _view_subName: view.subName }, e), 600); }}
+              onTouchEnd={() => clearTimeout(lpTimerProd)}
+              onTouchMove={() => clearTimeout(lpTimerProd)}
+              onMouseDown={e => { lpTimerProd = setTimeout(() => useLongPressHandlers({ ...prod, _fav_key: `prod_${prod.id}`, _fav_type: "product", _fav_label: prod.name, _fav_image: prod.image_url, _view_id: view.id, _view_data: view.data, _view_fromSubSub: view.fromSubSub, _view_catId: view.catId, _view_subId: view.subId, _view_subName: view.subName }, e), 600); }}
+              onMouseUp={() => clearTimeout(lpTimerProd)}
+              onMouseLeave={() => clearTimeout(lpTimerProd)}
+            >
               <div className="flex items-center gap-4">
-                <div className="w-16 h-16 bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden">
+                <div className="w-16 h-16 bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden relative">
                   <img src={prod.image_url || "https://picsum.photos/seed/prod/100/100"} alt={prod.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  {isFavorite(`prod_${prod.id}`) && <span className="absolute top-0.5 right-0.5 text-yellow-400 text-xs">⭐</span>}
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
