@@ -3249,9 +3249,9 @@ async function startServer() {
 
   app.post("/api/admin/payment-methods", async (req, res) => {
     try {
-      const { name, image_url, wallet_address, instructions, min_amount, active, method_type, api_account } = req.body;
+      const { name, image_url, wallet_address, instructions, description, min_amount, active, method_type, api_account } = req.body;
       const { data, error } = await supabase.from("payment_methods").insert({
-        name, image_url, wallet_address, instructions, min_amount, active,
+        name, image_url, wallet_address, instructions, description: description || null, min_amount, active,
         method_type: method_type || "manual",
         api_account: api_account || null
       }).select().single();
@@ -3435,13 +3435,14 @@ async function startServer() {
 
   app.patch("/api/admin/payment-methods/:id", async (req, res) => {
     try {
-      const { name, image_url, wallet_address, min_amount, instructions } = req.body;
+      const { name, image_url, wallet_address, min_amount, instructions, description } = req.body;
       const updateData: any = {};
       if (name !== undefined) updateData.name = name;
       if (image_url !== undefined) updateData.image_url = image_url;
       if (wallet_address !== undefined) updateData.wallet_address = wallet_address;
       if (min_amount !== undefined) updateData.min_amount = parseFloat(min_amount);
       if (instructions !== undefined) updateData.instructions = instructions;
+      if (description !== undefined) updateData.description = description || null;
       const { error } = await supabase.from("payment_methods").update(updateData).eq("id", req.params.id);
       if (error) throw error;
       res.json({ success: true });
