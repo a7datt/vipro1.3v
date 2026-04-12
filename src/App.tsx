@@ -4118,6 +4118,67 @@ export default function App() {
             {isRegister ? "لديك حساب بالفعل؟ سجل دخولك" : "ليس لديك حساب؟ أنشئ حساباً جديداً"}
           </button>
 
+          {/* Google Sign-In */}
+          <div className="relative flex items-center py-2">
+            <div className="flex-grow border-t border-gray-200"></div>
+            <span className="mx-3 text-xs text-gray-400 font-medium">أو</span>
+            <div className="flex-grow border-t border-gray-200"></div>
+          </div>
+          <button
+            onClick={async () => {
+              try {
+                const clientId = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
+                if (!clientId) { setError("تسجيل الدخول عبر Google غير مفعّل حالياً"); return; }
+                // Load Google Identity Services
+                if (!(window as any).google) {
+                  await new Promise<void>((resolve, reject) => {
+                    const s = document.createElement('script');
+                    s.src = 'https://accounts.google.com/gsi/client';
+                    s.onload = () => resolve();
+                    s.onerror = () => reject();
+                    document.head.appendChild(s);
+                  });
+                }
+                (window as any).google.accounts.id.initialize({
+                  client_id: clientId,
+                  callback: async (response: any) => {
+                    setLoading(true);
+                    setError("");
+                    try {
+                      const res = await fetch("/api/auth/google", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ credential: response.credential })
+                      });
+                      const data = await res.json();
+                      if (res.ok) {
+                        setUser(data);
+                        if (data.token) localStorage.setItem("authToken", data.token);
+                        localStorage.setItem("userId", String(data.id));
+                        setView({ type: "main" });
+                        setActiveTab("home");
+                        if (data.isNew) { setOnboardingStep(0); setShowOnboarding(true); }
+                      } else {
+                        setError(data.error || "فشل تسجيل الدخول عبر Google");
+                      }
+                    } catch { setError("فشل الاتصال بالخادم"); }
+                    finally { setLoading(false); }
+                  }
+                });
+                (window as any).google.accounts.id.prompt();
+              } catch { setError("فشل تحميل خدمة Google"); }
+            }}
+            className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 rounded-2xl py-3.5 font-bold text-gray-700 text-sm shadow-sm active:scale-95 transition-all hover:border-gray-300"
+          >
+            <svg width="20" height="20" viewBox="0 0 48 48">
+              <path fill="#FFC107" d="M43.6 20H24v8h11.3C33.6 33.6 29.3 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l5.7-5.7C34.6 5.1 29.6 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21c11.1 0 20.4-8.1 20.4-21 0-1.4-.1-2.7-.4-4z"/>
+              <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.1 8.1 2.9l5.7-5.7C34.6 5.1 29.6 3 24 3 16.3 3 9.7 7.9 6.3 14.7z"/>
+              <path fill="#4CAF50" d="M24 45c5.5 0 10.4-1.9 14.2-5.1l-6.6-5.4C29.6 36 26.9 37 24 37c-5.2 0-9.6-3.4-11.2-8.1l-6.6 5.1C9.7 41.1 16.3 45 24 45z"/>
+              <path fill="#1976D2" d="M43.6 20H24v8h11.3c-.8 2.2-2.2 4-4 5.4l6.6 5.4C41.8 35.4 44 30.1 44 24c0-1.4-.1-2.7-.4-4z"/>
+            </svg>
+            تسجيل الدخول عبر Google
+          </button>
+
           <button 
             onClick={() => { setActiveTab("profile"); setView({ type: "chat" }); }}
             className="w-full flex items-center justify-center gap-2 text-gray-400 text-xs font-bold pt-4"
@@ -7453,15 +7514,22 @@ const AdminPanel = ({
     };
 
     const handleAddCategory = async () => {
-      await adminFetch("/api/admin/categories", {
+      if (!newCategory.name || newCategory.name.trim().length < 1) {
+        return showToast("يرجى إدخال اسم القسم الرئيسي", 'error');
+      }
+      const res = await adminFetch("/api/admin/categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newCategory)
       });
-      setNewCategory({ name: "", image_url: "", special_id: "" });
-      fetchCategories();
-      fetchCategories();
+      const data = await res.json();
+      if (res.ok) {
+        setNewCategory({ name: "", image_url: "", special_id: "" });
+        fetchCategories();
         showToast("✅ تمت إضافة القسم الرئيسي بنجاح", 'success');
+      } else {
+        showToast("❌ " + (data.error || "خطأ في الإضافة"), 'error');
+      }
     };
 
     const handleAddSubcategory = async () => {
@@ -7576,7 +7644,7 @@ const AdminPanel = ({
           showToast(result.message || "✅ تم الحذف بنجاح", 'success');
         } else {
           const errData = result;
-          showToast("❌ " + (errData.error || "فشل الحذف", 'error'));
+          showToast("❌ " + (errData.error || "فشل الحذف"), 'error');
         }
       }, true);
     };
