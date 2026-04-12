@@ -1055,6 +1055,43 @@ export default function App() {
       fetchUser(Number(savedUserId));
     }
 
+    // Handle Google OAuth redirect callback (hash fragment contains access_token)
+    const handleGoogleRedirectCallback = async () => {
+      const hash = window.location.hash;
+      if (!hash.includes('access_token')) return;
+      const params = new URLSearchParams(hash.replace('#', ''));
+      const accessToken = params.get('access_token');
+      const state = params.get('state');
+      if (!accessToken || state !== 'google_oauth') return;
+
+      // Clean URL immediately
+      window.history.replaceState(null, '', window.location.pathname);
+
+      try {
+        const profileRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        if (!profileRes.ok) return;
+        const profile = await profileRes.json();
+
+        const res = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accessToken, googleId: profile.sub, email: profile.email, name: profile.name, picture: profile.picture })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setUser(data);
+          if (data.token) localStorage.setItem('authToken', data.token);
+          localStorage.setItem('userId', String(data.id));
+          setView({ type: 'main' });
+          setActiveTab('home');
+          if (data.isNew) { setOnboardingStep(0); setShowOnboarding(true); }
+        }
+      } catch { /* silent */ }
+    };
+    handleGoogleRedirectCallback();
+
     // Handle referral code from URL
     const urlParams = new URLSearchParams(window.location.search);
     const ref = urlParams.get('ref');
@@ -4125,96 +4162,20 @@ export default function App() {
             <div className="flex-grow border-t border-gray-200"></div>
           </div>
           <button
-            onClick={async () => {
-              try {
-                const clientId = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
-                if (!clientId) { setError("تسجيل الدخول عبر Google غير مفعّل حالياً"); return; }
-
-                // دالة المعالجة بعد الحصول على access_token
-                const handleGoogleToken = async (accessToken: string) => {
-                  setLoading(true);
-                  setError("");
-                  try {
-                    // جلب بيانات المستخدم من Google
-                    const profileRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-                      headers: { Authorization: `Bearer ${accessToken}` }
-                    });
-                    if (!profileRes.ok) throw new Error("فشل جلب بيانات Google");
-                    const profile = await profileRes.json();
-
-                    // إرسال البيانات للسيرفر
-                    const res = await fetch("/api/auth/google", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        credential: null,
-                        accessToken,
-                        googleId: profile.sub,
-                        email: profile.email,
-                        name: profile.name,
-                        picture: profile.picture,
-                      })
-                    });
-                    const data = await res.json();
-                    if (res.ok) {
-                      setUser(data);
-                      if (data.token) localStorage.setItem("authToken", data.token);
-                      localStorage.setItem("userId", String(data.id));
-                      setView({ type: "main" });
-                      setActiveTab("home");
-                      if (data.isNew) { setOnboardingStep(0); setShowOnboarding(true); }
-                    } else {
-                      setError(data.error || "فشل تسجيل الدخول عبر Google");
-                    }
-                  } catch (e: any) {
-                    setError(e?.message || "فشل الاتصال بالخادم");
-                  } finally {
-                    setLoading(false);
-                  }
-                };
-
-                // تحميل سكريبت GSI مرة واحدة فقط
-                if (!(window as any).google?.accounts?.oauth2) {
-                  await new Promise<void>((resolve, reject) => {
-                    if (document.getElementById('gsi-script')) {
-                      // السكريبت موجود لكن لم يكتمل بعد
-                      const wait = setInterval(() => {
-                        if ((window as any).google?.accounts?.oauth2) { clearInterval(wait); resolve(); }
-                      }, 50);
-                      return;
-                    }
-                    const s = document.createElement('script');
-                    s.id = 'gsi-script';
-                    s.src = 'https://accounts.google.com/gsi/client';
-                    s.async = true;
-                    s.onload = () => resolve();
-                    s.onerror = () => reject(new Error("فشل تحميل خدمة Google"));
-                    document.head.appendChild(s);
-                  });
-                }
-
-                // فتح نافذة OAuth2 مباشرة — تعود بـ access_token للـ callback بدون /gsi/transform
-                const client = (window as any).google.accounts.oauth2.initTokenClient({
-                  client_id: clientId,
-                  scope: "openid email profile",
-                  callback: (tokenResponse: any) => {
-                    if (tokenResponse.error) {
-                      setError("فشل تسجيل الدخول: " + tokenResponse.error);
-                      return;
-                    }
-                    handleGoogleToken(tokenResponse.access_token);
-                  },
-                  error_callback: (err: any) => {
-                    if (err.type !== "popup_closed") {
-                      setError("فشل تسجيل الدخول عبر Google");
-                    }
-                  },
-                });
-                client.requestAccessToken({ prompt: "select_account" });
-
-              } catch (e: any) {
-                setError(e?.message || "فشل تحميل خدمة Google");
-              }
+            onClick={() => {
+              const clientId = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
+              if (!clientId) { setError("تسجيل الدخول عبر Google غير مفعّل حالياً"); return; }
+              const redirectUri = window.location.origin + window.location.pathname;
+              const params = new URLSearchParams({
+                client_id: clientId,
+                redirect_uri: redirectUri,
+                response_type: 'token',
+                scope: 'openid email profile',
+                state: 'google_oauth',
+                prompt: 'select_account',
+                include_granted_scopes: 'true',
+              });
+              window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
             }}
             className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 rounded-2xl py-3.5 font-bold text-gray-700 text-sm shadow-sm active:scale-95 transition-all hover:border-gray-300"
           >
