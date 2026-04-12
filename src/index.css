@@ -231,6 +231,34 @@
   to   { opacity: 0; transform: translateY(-10px) scale(0.95); }
 }
 
+/* ===== RIPPLE / PRESS EFFECT ON BUTTONS ===== */
+@keyframes ripple-brand {
+  0%   { transform: scale(0); opacity: 0.45; }
+  80%  { transform: scale(2.8); opacity: 0.15; }
+  100% { transform: scale(3.2); opacity: 0; }
+}
+
+button, a, [role="button"] {
+  position: relative;
+  overflow: hidden;
+}
+
+button::after, a::after, [role="button"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(176,0,0,0.28) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+
+button:active::after, a:active::after, [role="button"]:active::after {
+  opacity: 1;
+  transition: opacity 0s;
+}
+/* ===== END RIPPLE EFFECT ===== */
+
 /* ===== CUSTOM DIALOG ANIMATION ===== */
 @keyframes slideUpDialog {
   from { transform: translateY(100%); opacity: 0; }

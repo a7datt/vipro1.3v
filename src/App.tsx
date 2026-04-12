@@ -739,6 +739,10 @@ export default function App() {
   const [longPressTarget, setLongPressTarget] = useState<any | null>(null);
   const [longPressPos, setLongPressPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
+  // ===== ONBOARDING TUTORIAL STATE =====
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
+
   // ===== CUSTOM DIALOG STATE =====
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -3470,7 +3474,7 @@ export default function App() {
         )}
 
         {/* قائمة الإجراءات */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50 overflow-hidden">
+        <div className="space-y-2">
           <ProfileItem icon={<UserCircle size={20} />} label="معلومات الحساب" onClick={() => setView({ type: "profile_details" })} />
           <ProfileItem icon={<User size={20} />} label="تعديل الملف الشخصي" onClick={() => setView({ type: "edit_profile" })} />
           <ProfileItem icon={<Settings size={20} />} label="الإعدادات" onClick={() => setView({ type: "settings" })} />
@@ -3496,7 +3500,7 @@ export default function App() {
   };
 
     const ProfileItem = ({ icon, label, onClick, className = "", badge }: any) => (
-    <button onClick={onClick} className={`w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors ${className}`}>
+    <button onClick={onClick} className={`w-full flex items-center justify-between p-4 bg-white rounded-2xl border border-gray-100 shadow-sm active:scale-[0.98] transition-all ${className}`}>
       <div className="flex items-center gap-4">
         <span className="text-gray-400">{icon}</span>
         <span className="font-medium text-gray-700">{label}</span>
@@ -3945,6 +3949,11 @@ export default function App() {
             localStorage.removeItem("referralCode");
             setView({ type: "main" });
             setActiveTab("home");
+            // Show onboarding only after registration (not login)
+            if (isRegister) {
+              setOnboardingStep(0);
+              setShowOnboarding(true);
+            }
           }
         } else {
           if (data.requiresVerification) {
@@ -3980,6 +3989,11 @@ export default function App() {
               localStorage.removeItem("referralCode");
               setView({ type: "main" });
               setActiveTab("home");
+              // Show onboarding after registration via OTP
+              if (isRegister) {
+                setOnboardingStep(0);
+                setShowOnboarding(true);
+              }
             } else {
               setVerifyEmail(null);
             }
@@ -8555,6 +8569,113 @@ const AdminPanel = ({
         )}
       </AnimatePresence>
       {/* ===== END LONG PRESS OVERLAY ===== */}
+
+      {/* ===== ONBOARDING TUTORIAL ===== */}
+      <AnimatePresence>
+        {showOnboarding && (() => {
+          const steps = [
+            {
+              icon: "⭐",
+              title: "إضافة التطبيقات للمفضلة",
+              desc: "لإضافة أي قسم أو منتج إلى المفضلة، اضغط عليه ضغطةً مطولة وستظهر لك قائمة الإضافة.",
+            },
+            {
+              icon: "💳",
+              title: "كيفية شحن رصيدك",
+              desc: "اذهب إلى تبويب «شحن» ← اختر طريقة الدفع ← انسخ عنوان الحساب ← حوّل المبلغ ← خذ لقطة شاشة للحوالة ← ارجع للموقع وأدخل المبلغ وارفع صورة الحوالة.",
+            },
+            {
+              icon: "🛍️",
+              title: "تتبع طلباتك",
+              desc: "بعد إتمام أي طلب، يمكنك متابعة حالته في تبويب «الطلبات» في الشريط السفلي.",
+            },
+            {
+              icon: "🔔",
+              title: "الإشعارات والدعم",
+              desc: "ستصلك إشعارات فورية عند تحديث حالة طلبك. وللتواصل مع الدعم الفني، اذهب إلى «حسابي» ← «تواصل معنا».",
+            },
+            {
+              icon: "🎁",
+              title: "نقاط المكافآت",
+              desc: "مع كل طلب تجمع نقاطاً يمكنك استبدالها بمكافآت ومزايا حصرية. تحقق من رصيد نقاطك في صفحة «حسابي».",
+            },
+          ];
+          const step = steps[onboardingStep];
+          const isLast = onboardingStep === steps.length - 1;
+          return (
+            <motion.div
+              key="onboarding-bg"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm flex items-end justify-center p-4 pb-8"
+            >
+              <motion.div
+                key={onboardingStep}
+                initial={{ opacity: 0, y: 60, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                transition={{ type: "spring", stiffness: 300, damping: 28 }}
+                className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden"
+              >
+                {/* Progress bar */}
+                <div className="h-1 bg-gray-100">
+                  <div
+                    className="h-full bg-brand transition-all duration-500 rounded-full"
+                    style={{ width: `${((onboardingStep + 1) / steps.length) * 100}%` }}
+                  />
+                </div>
+
+                <div className="p-7 text-center space-y-4" dir="rtl">
+                  {/* Icon */}
+                  <div className="w-20 h-20 bg-brand-light rounded-3xl flex items-center justify-center text-4xl mx-auto shadow-sm">
+                    {step.icon}
+                  </div>
+
+                  {/* Content */}
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-bold text-gray-900">{step.title}</h3>
+                    <p className="text-gray-500 text-sm leading-relaxed">{step.desc}</p>
+                  </div>
+
+                  {/* Step dots */}
+                  <div className="flex justify-center gap-2 pt-1">
+                    {steps.map((_, i) => (
+                      <div
+                        key={i}
+                        className={`h-2 rounded-full transition-all duration-300 ${i === onboardingStep ? "w-6 bg-brand" : "w-2 bg-gray-200"}`}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Buttons */}
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => setShowOnboarding(false)}
+                      className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-400 text-sm font-bold active:scale-95 active:bg-[#B00000]/10 transition-all"
+                    >
+                      تخطي
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (isLast) {
+                          setShowOnboarding(false);
+                        } else {
+                          setOnboardingStep(s => s + 1);
+                        }
+                      }}
+                      className="flex-[2] py-3 rounded-2xl bg-brand text-white text-sm font-bold active:scale-95 active:opacity-80 transition-all shadow-lg shadow-brand-soft"
+                    >
+                      {isLast ? "ابدأ الآن 🎉" : "التالي"}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
+      {/* ===== END ONBOARDING TUTORIAL ===== */}
 
       {/* ===== TOAST CONTAINER ===== */}
       <ToastContainer />
