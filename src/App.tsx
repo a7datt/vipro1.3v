@@ -4124,82 +4124,108 @@ export default function App() {
             <span className="mx-3 text-xs text-gray-400 font-medium">أو</span>
             <div className="flex-grow border-t border-gray-200"></div>
           </div>
-          {/* Google Sign-In Button rendered by GSI — FedCM compatible */}
-          <div
-            id="google-signin-btn-container"
-            ref={(el) => {
-              if (!el) return;
-              const clientId = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
-              if (!clientId) return;
+          <button
+            onClick={async () => {
+              try {
+                const clientId = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
+                if (!clientId) { setError("تسجيل الدخول عبر Google غير مفعّل حالياً"); return; }
 
-              const renderGoogleBtn = () => {
-                if (!(window as any).google?.accounts?.id) return;
-                if (el.querySelector('iframe')) return; // already rendered
+                // دالة المعالجة بعد الحصول على access_token
+                const handleGoogleToken = async (accessToken: string) => {
+                  setLoading(true);
+                  setError("");
+                  try {
+                    // جلب بيانات المستخدم من Google
+                    const profileRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+                      headers: { Authorization: `Bearer ${accessToken}` }
+                    });
+                    if (!profileRes.ok) throw new Error("فشل جلب بيانات Google");
+                    const profile = await profileRes.json();
 
-                (window as any).google.accounts.id.initialize({
-                  client_id: clientId,
-                  callback: async (response: any) => {
-                    setLoading(true);
-                    setError("");
-                    try {
-                      const res = await fetch("/api/auth/google", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ credential: response.credential })
-                      });
-                      const data = await res.json();
-                      if (res.ok) {
-                        setUser(data);
-                        if (data.token) localStorage.setItem("authToken", data.token);
-                        localStorage.setItem("userId", String(data.id));
-                        setView({ type: "main" });
-                        setActiveTab("home");
-                        if (data.isNew) { setOnboardingStep(0); setShowOnboarding(true); }
-                      } else {
-                        setError(data.error || "فشل تسجيل الدخول عبر Google");
-                      }
-                    } catch { setError("فشل الاتصال بالخادم"); }
-                    finally { setLoading(false); }
-                  },
-                  ux_mode: "popup",
-                  use_fedcm_for_prompt: true,
-                });
-
-                (window as any).google.accounts.id.renderButton(el, {
-                  type: "standard",
-                  theme: "outline",
-                  size: "large",
-                  text: "signin_with",
-                  shape: "rectangular",
-                  logo_alignment: "left",
-                  width: el.offsetWidth || 320,
-                  locale: "ar",
-                });
-              };
-
-              if ((window as any).google?.accounts?.id) {
-                renderGoogleBtn();
-              } else if (!document.getElementById('gsi-script')) {
-                const s = document.createElement('script');
-                s.id = 'gsi-script';
-                s.src = 'https://accounts.google.com/gsi/client';
-                s.async = true;
-                s.defer = true;
-                s.onload = renderGoogleBtn;
-                document.head.appendChild(s);
-              } else {
-                // Script tag exists but not loaded yet — wait
-                const interval = setInterval(() => {
-                  if ((window as any).google?.accounts?.id) {
-                    clearInterval(interval);
-                    renderGoogleBtn();
+                    // إرسال البيانات للسيرفر
+                    const res = await fetch("/api/auth/google", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        credential: null,
+                        accessToken,
+                        googleId: profile.sub,
+                        email: profile.email,
+                        name: profile.name,
+                        picture: profile.picture,
+                      })
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                      setUser(data);
+                      if (data.token) localStorage.setItem("authToken", data.token);
+                      localStorage.setItem("userId", String(data.id));
+                      setView({ type: "main" });
+                      setActiveTab("home");
+                      if (data.isNew) { setOnboardingStep(0); setShowOnboarding(true); }
+                    } else {
+                      setError(data.error || "فشل تسجيل الدخول عبر Google");
+                    }
+                  } catch (e: any) {
+                    setError(e?.message || "فشل الاتصال بالخادم");
+                  } finally {
+                    setLoading(false);
                   }
-                }, 100);
+                };
+
+                // تحميل سكريبت GSI مرة واحدة فقط
+                if (!(window as any).google?.accounts?.oauth2) {
+                  await new Promise<void>((resolve, reject) => {
+                    if (document.getElementById('gsi-script')) {
+                      // السكريبت موجود لكن لم يكتمل بعد
+                      const wait = setInterval(() => {
+                        if ((window as any).google?.accounts?.oauth2) { clearInterval(wait); resolve(); }
+                      }, 50);
+                      return;
+                    }
+                    const s = document.createElement('script');
+                    s.id = 'gsi-script';
+                    s.src = 'https://accounts.google.com/gsi/client';
+                    s.async = true;
+                    s.onload = () => resolve();
+                    s.onerror = () => reject(new Error("فشل تحميل خدمة Google"));
+                    document.head.appendChild(s);
+                  });
+                }
+
+                // فتح نافذة OAuth2 مباشرة — تعود بـ access_token للـ callback بدون /gsi/transform
+                const client = (window as any).google.accounts.oauth2.initTokenClient({
+                  client_id: clientId,
+                  scope: "openid email profile",
+                  callback: (tokenResponse: any) => {
+                    if (tokenResponse.error) {
+                      setError("فشل تسجيل الدخول: " + tokenResponse.error);
+                      return;
+                    }
+                    handleGoogleToken(tokenResponse.access_token);
+                  },
+                  error_callback: (err: any) => {
+                    if (err.type !== "popup_closed") {
+                      setError("فشل تسجيل الدخول عبر Google");
+                    }
+                  },
+                });
+                client.requestAccessToken({ prompt: "select_account" });
+
+              } catch (e: any) {
+                setError(e?.message || "فشل تحميل خدمة Google");
               }
             }}
-            className="w-full flex items-center justify-center"
-            style={{ minHeight: '44px' }}
-          />
+            className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 rounded-2xl py-3.5 font-bold text-gray-700 text-sm shadow-sm active:scale-95 transition-all hover:border-gray-300"
+          >
+            <svg width="20" height="20" viewBox="0 0 48 48">
+              <path fill="#FFC107" d="M43.6 20H24v8h11.3C33.6 33.6 29.3 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l5.7-5.7C34.6 5.1 29.6 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21c11.1 0 20.4-8.1 20.4-21 0-1.4-.1-2.7-.4-4z"/>
+              <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.1 8.1 2.9l5.7-5.7C34.6 5.1 29.6 3 24 3 16.3 3 9.7 7.9 6.3 14.7z"/>
+              <path fill="#4CAF50" d="M24 45c5.5 0 10.4-1.9 14.2-5.1l-6.6-5.4C29.6 36 26.9 37 24 37c-5.2 0-9.6-3.4-11.2-8.1l-6.6 5.1C9.7 41.1 16.3 45 24 45z"/>
+              <path fill="#1976D2" d="M43.6 20H24v8h11.3c-.8 2.2-2.2 4-4 5.4l6.6 5.4C41.8 35.4 44 30.1 44 24c0-1.4-.1-2.7-.4-4z"/>
+            </svg>
+            تسجيل الدخول عبر Google
+          </button>
 
           <button 
             onClick={() => { setActiveTab("profile"); setView({ type: "chat" }); }}
