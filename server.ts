@@ -265,6 +265,11 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
 const FROM_EMAIL = process.env.FROM_EMAIL || "noreply@vipro.sy";
 const STORE_NAME = process.env.STORE_NAME || "VIPro";
 
+// --- Google OAuth Configuration ---
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
+if (!GOOGLE_CLIENT_ID) console.warn("[GOOGLE] GOOGLE_CLIENT_ID غير مضبوط في .env");
+
 // [FIX] استخدام crypto.randomInt بدلاً من Math.random
 // Math.random() ليس CSPRNG ولا يُستخدم لأغراض أمنية
 function generateOtp(): string {
@@ -975,6 +980,142 @@ async function startServer() {
       await supabase.from("users").update({ password_hash: hashedPassword }).eq("email", email);
       res.json({ success: true });
     } catch (e: any) {
+      safeError(res, e);
+    }
+  });
+
+  // =================== GOOGLE OAUTH ===================
+  app.post("/api/auth/google", authLimiter, async (req, res) => {
+    const { credential } = req.body;
+    if (!credential || typeof credential !== "string") {
+      return res.status(400).json({ error: "بيانات Google غير صحيحة" });
+    }
+    if (!GOOGLE_CLIENT_ID) {
+      return res.status(503).json({ error: "تسجيل الدخول عبر Google غير مفعّل" });
+    }
+    try {
+      // Verify Google ID token using Google's tokeninfo endpoint
+      const tokenInfoRes = await fetch(
+        `https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`
+      );
+      if (!tokenInfoRes.ok) {
+        return res.status(401).json({ error: "رمز Google غير صالح" });
+      }
+      const tokenInfo: any = await tokenInfoRes.json();
+
+      // Validate audience
+      if (tokenInfo.aud !== GOOGLE_CLIENT_ID) {
+        return res.status(401).json({ error: "رمز Google غير مخصص لهذا التطبيق" });
+      }
+      // Validate token not expired
+      if (!tokenInfo.sub || !tokenInfo.email) {
+        return res.status(401).json({ error: "بيانات Google ناقصة" });
+      }
+
+      const googleId = tokenInfo.sub;
+      const email = (tokenInfo.email || "").toLowerCase().trim();
+      const name = tokenInfo.name || tokenInfo.email.split("@")[0];
+      const avatarUrl = tokenInfo.picture || null;
+
+      // Check if user already exists with this google_id
+      let { data: existingByGoogle } = await supabase
+        .from("users")
+        .select("*")
+        .eq("google_id", googleId)
+        .single();
+
+      if (existingByGoogle) {
+        // User exists via Google - login directly
+        if (existingByGoogle.is_banned) {
+          return res.status(403).json({ error: "تم إيقاف حسابك. تواصل مع الدعم." });
+        }
+        // Update last login stats
+        const today = new Date().toISOString().split("T")[0];
+        const { data: stats } = await supabase
+          .from("user_stats")
+          .select("last_login_date, login_days_count")
+          .eq("user_id", existingByGoogle.id)
+          .single();
+        if (stats && stats.last_login_date !== today) {
+          await supabase.from("user_stats")
+            .update({ last_login_date: today, login_days_count: (stats.login_days_count || 0) + 1 })
+            .eq("user_id", existingByGoogle.id);
+        }
+        const { password_hash: _ph, ...userWithoutPass } = existingByGoogle;
+        let { data: fullStats } = await supabase.from("user_stats").select("*").eq("user_id", existingByGoogle.id).single();
+        if (!fullStats) {
+          await supabase.from("user_stats").insert({ user_id: existingByGoogle.id });
+          const { data: ns } = await supabase.from("user_stats").select("*").eq("user_id", existingByGoogle.id).single();
+          fullStats = ns;
+        }
+        const token = createUserToken(existingByGoogle.id);
+        return res.json({ ...userWithoutPass, stats: fullStats, token, isNew: false });
+      }
+
+      // Check if email already registered (without Google)
+      let { data: existingByEmail } = await supabase
+        .from("users")
+        .select("*")
+        .eq("email", email)
+        .single();
+
+      let userId: number;
+      let isNew = false;
+
+      if (existingByEmail) {
+        // Link Google to existing account
+        await supabase.from("users").update({
+          google_id: googleId,
+          auth_provider: "google",
+          is_verified: true,
+          avatar_url: existingByEmail.avatar_url || avatarUrl
+        }).eq("id", existingByEmail.id);
+        userId = existingByEmail.id;
+
+        // Refresh user data
+        const { data: updatedUser } = await supabase.from("users").select("*").eq("id", userId).single();
+        existingByEmail = updatedUser;
+      } else {
+        // Create new user via Google
+        const { data: newUser, error: createErr } = await supabase.from("users").insert({
+          name: sanitizeText(name, 60),
+          email,
+          google_id: googleId,
+          auth_provider: "google",
+          is_verified: true,
+          avatar_url: avatarUrl,
+          balance: 0
+        }).select("*").single();
+
+        if (createErr) throw createErr;
+
+        await supabase.from("user_stats").insert({ user_id: newUser.id });
+        userId = newUser.id;
+        isNew = true;
+
+        sendTelegramMessage(`👤 مستخدم جديد (Google)\\nالاسم: ${name}\\nالإيميل: ${email}`);
+      }
+
+      // Fetch final user data
+      const { data: finalUser } = await supabase.from("users").select("*").eq("id", userId).single();
+      if (!finalUser) return res.status(500).json({ error: "خطأ في جلب بيانات المستخدم" });
+
+      if (finalUser.is_banned) {
+        return res.status(403).json({ error: "تم إيقاف حسابك. تواصل مع الدعم." });
+      }
+
+      const { password_hash: _ph2, ...userWithoutPass2 } = finalUser;
+      let { data: userStats } = await supabase.from("user_stats").select("*").eq("user_id", userId).single();
+      if (!userStats) {
+        await supabase.from("user_stats").insert({ user_id: userId });
+        const { data: ns2 } = await supabase.from("user_stats").select("*").eq("user_id", userId).single();
+        userStats = ns2;
+      }
+
+      const token = createUserToken(userId);
+      return res.json({ ...userWithoutPass2, stats: userStats, token, isNew });
+    } catch (e: any) {
+      console.error("[GOOGLE AUTH] Error:", e.message);
       safeError(res, e);
     }
   });
