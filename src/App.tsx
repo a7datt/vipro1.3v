@@ -550,7 +550,7 @@ const WalletChargeView: React.FC<WalletChargeViewProps> = React.memo(({
     return (
       <div className="px-4 space-y-6 pb-20">
         <div className="flex items-center gap-2 mb-6">
-          <button data-ob="ob-wallet-back" onClick={() => setSelectedMethod(null)} className="p-2 bg-gray-100 rounded-full">
+          <button onClick={() => setSelectedMethod(null)} className="p-2 bg-gray-100 rounded-full">
             <ArrowRight size={20} className="text-gray-600" />
           </button>
           <h2 className="text-xl font-bold text-gray-800">شحن عبر {selectedMethod.name}</h2>
@@ -602,7 +602,7 @@ const WalletChargeView: React.FC<WalletChargeViewProps> = React.memo(({
                 {selectedMethod.min_amount > 0 && <p className="text-xs text-brand mt-1 font-bold">أقل مبلغ: {selectedMethod.min_amount} $</p>}
               </div>
               <div className="space-y-4">
-                <div data-ob="ob-wallet-amount" className="space-y-2">
+                <div className="space-y-2">
                   <label className="text-sm font-bold text-gray-700">المبلغ المراد شحنه</label>
                   <input type="text" inputMode="decimal" value={walletAmount} onChange={e => setWalletAmount(e.target.value)} placeholder="0.00"
                     className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand" />
@@ -612,7 +612,7 @@ const WalletChargeView: React.FC<WalletChargeViewProps> = React.memo(({
                   <textarea value={walletNote} onChange={e => setWalletNote(e.target.value)} placeholder="اختياري..."
                     className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 outline-none focus:border-brand h-24 resize-none" />
                 </div>
-                <div data-ob="ob-wallet-receipt" className="space-y-2">
+                <div className="space-y-2">
                   <label className="text-sm font-bold text-gray-700">إرفاق صورة الإيصال</label>
                   <label className="w-full h-32 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-2 text-gray-400 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors relative overflow-hidden">
                     {walletReceiptUrl ? (
@@ -658,7 +658,7 @@ const WalletChargeView: React.FC<WalletChargeViewProps> = React.memo(({
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-bold text-gray-800">طرق الشحن المباشر</h3>
       </div>
-      <div data-ob="ob-wallet-method" className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-4 gap-2">
         {paymentMethods.map(method => (
           <button key={method.id} onClick={() => setSelectedMethod(method)}
             className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden hover:border-brand-soft transition-colors active:scale-95">
@@ -685,263 +685,6 @@ const WalletChargeView: React.FC<WalletChargeViewProps> = React.memo(({
   return true;
 });
 // ===================== END WALLET CHARGE VIEW =====================
-
-// ===================== ONBOARDING SYSTEM =====================
-
-interface OnboardingStep {
-  id: string;
-  title: string;
-  description: string;
-  // العنصر المضاء: bottom-nav أو منطقة محددة بـ data-ob
-  highlight: 'wallet_tab' | 'orders_tab' | 'profile_tab' | 'home_tab' | 'wallet_method' | 'wallet_amount' | 'wallet_receipt' | 'wallet_back' | 'product_card' | 'chat_tab';
-  // تحديد مكان نافذة الشرح: top | bottom | center
-  position: 'top' | 'bottom' | 'center';
-  // هل نتنقل لتاب معين
-  tab?: string;
-  arrow?: 'up' | 'down' | 'left' | 'right';
-}
-
-const onboardingSteps: OnboardingStep[] = [
-  // ─── شحن الرصيد ───
-  {
-    id: 'wallet_tab',
-    title: 'شحن الرصيد 💳',
-    description: 'اضغط على أيقونة "شحن" في شريط التنقل أدناه لفتح صفحة الشحن.',
-    highlight: 'wallet_tab',
-    position: 'top',
-    tab: 'wallet',
-    arrow: 'down',
-  },
-  {
-    id: 'wallet_method',
-    title: 'اختر طريقة الدفع',
-    description: 'اختر طريقة الدفع المناسبة من القائمة (سيريتل، شام كاش، أو غيرها).',
-    highlight: 'wallet_method',
-    position: 'top',
-    tab: 'wallet',
-    arrow: 'down',
-  },
-  {
-    id: 'wallet_amount',
-    title: 'أدخل المبلغ',
-    description: 'ضع قيمة المبلغ الذي حوّلته في حقل المبلغ.',
-    highlight: 'wallet_amount',
-    position: 'top',
-    tab: 'wallet',
-    arrow: 'down',
-  },
-  {
-    id: 'wallet_receipt',
-    title: 'ارفع صورة الإيصال',
-    description: 'ارفع صورة إيصال التحويل لإتمام طلب الشحن.',
-    highlight: 'wallet_receipt',
-    position: 'top',
-    tab: 'wallet',
-    arrow: 'down',
-  },
-  {
-    id: 'wallet_back',
-    title: 'للإلغاء',
-    description: 'إذا لم تحوّل أي مبلغ، اضغط سهم الرجوع في أعلى اليسار للعودة.',
-    highlight: 'wallet_back',
-    position: 'bottom',
-    tab: 'wallet',
-    arrow: 'up',
-  },
-  // ─── طلب منتج ───
-  {
-    id: 'home_tab',
-    title: 'طلب منتج 🛒',
-    description: 'اضغط على "الرئيسية" في الأسفل لتصفح المنتجات المتاحة.',
-    highlight: 'home_tab',
-    position: 'top',
-    tab: 'home',
-    arrow: 'down',
-  },
-  {
-    id: 'product_card',
-    title: 'اختر منتجاً',
-    description: 'اضغط على أي فئة أو منتج، ثم اختر الكمية واضغط "طلب" أو "شراء".',
-    highlight: 'product_card',
-    position: 'bottom',
-    tab: 'home',
-    arrow: 'up',
-  },
-  // ─── الطلبات ───
-  {
-    id: 'orders_tab',
-    title: 'متابعة الطلبات 📦',
-    description: 'اضغط على أيقونة "الطلبات" لمتابعة حالة طلباتك الحالية والسابقة.',
-    highlight: 'orders_tab',
-    position: 'top',
-    tab: 'orders',
-    arrow: 'down',
-  },
-  // ─── المدفوعات ───
-  {
-    id: 'profile_tab',
-    title: 'عمليات الدفع 💰',
-    description: 'من "حسابي" في الأسفل ثم "دفعاتي" يمكنك مراجعة جميع عمليات الشحن.',
-    highlight: 'profile_tab',
-    position: 'top',
-    tab: 'profile',
-    arrow: 'down',
-  },
-  // ─── الدعم ───
-  {
-    id: 'chat_tab',
-    title: 'الدعم الفني 🎧',
-    description: 'من "حسابي" ثم "الدعم الفني" يمكنك التواصل مع فريق الدعم مباشرة.',
-    highlight: 'chat_tab',
-    position: 'top',
-    tab: 'profile',
-    arrow: 'down',
-  },
-];
-
-// خريطة: highlight id → data-ob attribute value (نضعه على العناصر)
-const OB_TARGETS: Record<string, string> = {
-  wallet_tab:    'ob-wallet-tab',
-  orders_tab:    'ob-orders-tab',
-  profile_tab:   'ob-profile-tab',
-  home_tab:      'ob-home-tab',
-  wallet_method: 'ob-wallet-method',
-  wallet_amount: 'ob-wallet-amount',
-  wallet_receipt:'ob-wallet-receipt',
-  wallet_back:   'ob-wallet-back',
-  product_card:  'ob-product-card',
-  chat_tab:      'ob-chat-tab',
-};
-
-const OnboardingOverlay: React.FC<{
-  active: boolean;
-  step: number;
-  onNext: () => void;
-  onSkip: () => void;
-  setActiveTab: (t: string) => void;
-  setView: (v: any) => void;
-}> = ({ active, step, onNext, onSkip, setActiveTab, setView }) => {
-  const [targetRect, setTargetRect] = React.useState<DOMRect | null>(null);
-  const [ready, setReady] = React.useState(false);
-
-  const currentStep = active && step >= 0 ? onboardingSteps[step] : null;
-
-  // عند تغيير الخطوة: انتقل للتاب المطلوب ثم ابحث عن العنصر
-  React.useEffect(() => {
-    if (!currentStep) return;
-    setReady(false);
-    if (currentStep.tab) setActiveTab(currentStep.tab);
-
-    const find = () => {
-      const attrVal = OB_TARGETS[currentStep.highlight];
-      if (!attrVal) { setTargetRect(null); setReady(true); return; }
-      const el = document.querySelector(`[data-ob="${attrVal}"]`);
-      if (el) {
-        setTargetRect(el.getBoundingClientRect());
-        setReady(true);
-      } else {
-        setTimeout(find, 120);
-      }
-    };
-    setTimeout(find, 350);
-  }, [step, active]);
-
-  if (!active || step < 0 || !currentStep || !ready) return null;
-
-  const PAD = 10;
-  const rect = targetRect;
-  const winH = window.innerHeight;
-  const winW = window.innerWidth;
-
-  // نافذة الشرح
-  const boxW = Math.min(winW - 32, 320);
-
-  let boxTop: number;
-  let boxLeft = (winW - boxW) / 2;
-
-  if (currentStep.position === 'bottom' && rect) {
-    boxTop = Math.min(rect.bottom + PAD + 12, winH - 180);
-  } else if (currentStep.position === 'top' && rect) {
-    boxTop = Math.max(rect.top - 160 - PAD, 16);
-  } else {
-    boxTop = (winH - 160) / 2;
-  }
-
-  return (
-    <div className="fixed inset-0 z-[9000] pointer-events-none">
-      {/* ظل داكن يغطي كل شيء */}
-      <div
-        className="absolute inset-0 pointer-events-auto"
-        style={{ background: 'rgba(0,0,0,0.68)' }}
-        onClick={onNext}
-      />
-
-      {/* فتحة مضيئة حول العنصر المستهدف */}
-      {rect && (
-        <div
-          className="absolute pointer-events-none"
-          style={{
-            left:   rect.left   - PAD,
-            top:    rect.top    - PAD,
-            width:  rect.width  + PAD * 2,
-            height: rect.height + PAD * 2,
-            borderRadius: 16,
-            boxShadow: '0 0 0 9999px rgba(0,0,0,0.68)',
-            background: 'transparent',
-            zIndex: 1,
-          }}
-        />
-      )}
-
-      {/* نافذة الشرح */}
-      <div
-        className="absolute pointer-events-auto"
-        style={{ top: boxTop, left: boxLeft, width: boxW, zIndex: 2 }}
-      >
-        <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-          {/* شريط علوي */}
-          <div className="bg-brand px-4 py-3 flex items-center justify-between">
-            <span className="text-white font-bold text-sm">{currentStep.title}</span>
-            <button
-              onClick={onSkip}
-              className="text-white/80 text-xs font-bold bg-white/20 px-3 py-1 rounded-full active:scale-95 transition-all"
-            >
-              تخطي الكل
-            </button>
-          </div>
-          <div className="px-4 py-4 space-y-4">
-            {/* السهم الإرشادي */}
-            {currentStep.arrow && (
-              <div className={`flex ${currentStep.arrow === 'down' ? 'justify-center animate-bounce' : currentStep.arrow === 'up' ? 'justify-center animate-bounce' : 'justify-center'}`}>
-                {currentStep.arrow === 'down' && <div className="text-brand text-2xl">↓</div>}
-                {currentStep.arrow === 'up'   && <div className="text-brand text-2xl">↑</div>}
-                {currentStep.arrow === 'left' && <div className="text-brand text-2xl">←</div>}
-                {currentStep.arrow === 'right'&& <div className="text-brand text-2xl">→</div>}
-              </div>
-            )}
-            <p className="text-gray-700 text-sm leading-relaxed text-right">{currentStep.description}</p>
-            <div className="flex items-center justify-between">
-              {/* نقاط التقدم */}
-              <div className="flex gap-1">
-                {onboardingSteps.map((_, i) => (
-                  <div key={i} className={`rounded-full transition-all ${i === step ? 'w-4 h-2 bg-brand' : 'w-2 h-2 bg-gray-200'}`} />
-                ))}
-              </div>
-              <button
-                onClick={onNext}
-                className="bg-brand text-white px-5 py-2 rounded-xl font-bold text-sm active:scale-95 transition-all shadow-lg shadow-brand-soft"
-              >
-                {step === onboardingSteps.length - 1 ? 'إنهاء ✓' : 'التالي ←'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ===================== END ONBOARDING SYSTEM =====================
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("home");
@@ -985,36 +728,7 @@ export default function App() {
     timeLeft: 0
   });
 
-  // ===== ONBOARDING STATE =====
-  const [onboardingStep, setOnboardingStep] = useState<number>(-1); // -1 = مخفي
-  const [onboardingActive, setOnboardingActive] = useState(false);
-
-  const startOnboarding = useCallback(() => {
-    setOnboardingStep(0);
-    setOnboardingActive(true);
-    setActiveTab("home");
-    setView({ type: "main" });
-  }, []);
-
-  const nextOnboardingStep = useCallback(() => {
-    setOnboardingStep(prev => {
-      const next = prev + 1;
-      if (next >= onboardingSteps.length) {
-        setOnboardingActive(false);
-        localStorage.setItem("onboarding_done", "1");
-        return -1;
-      }
-      return next;
-    });
-  }, []);
-
-  const skipOnboarding = useCallback(() => {
-    setOnboardingActive(false);
-    setOnboardingStep(-1);
-    localStorage.setItem("onboarding_done", "1");
-  }, []);
-
-  // ===== END ONBOARDING STATE =====
+  // ===== HOME SORT MODE & FAVORITES =====
   const [homeSortMode, setHomeSortMode] = useState<"categories" | "most_purchased" | "favorites">("categories");
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [mostPurchased, setMostPurchased] = useState<any[]>([]);
@@ -2039,7 +1753,6 @@ export default function App() {
     return (
     <nav className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-gray-100 flex items-center justify-around z-40">
       <button 
-        data-ob="ob-home-tab"
         onClick={() => { setCheckoutOrderResult(null); setActiveTab("home"); setView({ type: "main" }); setViewHistory([]); }}
         className={`flex flex-col items-center gap-1 ${activeTab === "home" ? theme.text : "text-gray-400"}`}
       >
@@ -2047,7 +1760,6 @@ export default function App() {
         <span className="text-[10px] font-medium">الرئيسية</span>
       </button>
       <button 
-        data-ob="ob-wallet-tab"
         onClick={() => { setCheckoutOrderResult(null); setActiveTab("wallet"); }}
         className={`flex flex-col items-center gap-1 ${activeTab === "wallet" ? theme.text : "text-gray-400"}`}
       >
@@ -2055,7 +1767,6 @@ export default function App() {
         <span className="text-[10px] font-medium">شحن</span>
       </button>
       <button 
-        data-ob="ob-orders-tab"
         onClick={() => { setCheckoutOrderResult(null); setActiveTab("orders"); }}
         className={`flex flex-col items-center gap-1 ${activeTab === "orders" ? theme.text : "text-gray-400"}`}
       >
@@ -2070,7 +1781,6 @@ export default function App() {
         <span className="text-[10px] font-medium">الطلبات</span>
       </button>
       <button 
-        data-ob="ob-profile-tab"
         onClick={() => { setCheckoutOrderResult(null); setActiveTab("profile"); }}
         className={`flex flex-col items-center gap-1 ${activeTab === "profile" ? theme.text : "text-gray-400"}`}
       >
@@ -2382,12 +2092,11 @@ export default function App() {
                   <div className="h-4 bg-gray-200 mx-2 my-2 rounded-full" />
                 </div>
               ))
-            ) : categories.map((cat, catIdx) => {
+            ) : categories.map(cat => {
               const favKey = `cat_${cat.id}`;
               let longPressTimer: any = null;
               return (
                 <motion.button
-                  data-ob={catIdx === 0 ? "ob-product-card" : undefined}
                   whileTap={{ scale: 0.95 }}
                   key={cat.id}
                   onClick={async () => {
@@ -3765,7 +3474,7 @@ export default function App() {
           <ProfileItem icon={<UserCircle size={20} />} label="معلومات الحساب" onClick={() => setView({ type: "profile_details" })} />
           <ProfileItem icon={<User size={20} />} label="تعديل الملف الشخصي" onClick={() => setView({ type: "edit_profile" })} />
           <ProfileItem icon={<Settings size={20} />} label="الإعدادات" onClick={() => setView({ type: "settings" })} />
-          <ProfileItem icon={<Headphones size={20} />} label="الدعم الفني" onClick={() => setView({ type: "chat" })} className="text-brand relative" badge={user?.unread_support_count > 0 ? user.unread_support_count : undefined} dataOb="ob-chat-tab" />
+          <ProfileItem icon={<Headphones size={20} />} label="الدعم الفني" onClick={() => setView({ type: "chat" })} className="text-brand relative" badge={user?.unread_support_count > 0 ? user.unread_support_count : undefined} />
           {user ? (
             <ProfileItem icon={<LogOut size={20} />} label="تسجيل الخروج" onClick={handleLogout} className="text-red-500" />
           ) : (
@@ -3786,8 +3495,8 @@ export default function App() {
     );
   };
 
-    const ProfileItem = ({ icon, label, onClick, className = "", badge, dataOb }: any) => (
-    <button onClick={onClick} data-ob={dataOb} className={`w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors ${className}`}>
+    const ProfileItem = ({ icon, label, onClick, className = "", badge }: any) => (
+    <button onClick={onClick} className={`w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors ${className}`}>
       <div className="flex items-center gap-4">
         <span className="text-gray-400">{icon}</span>
         <span className="font-medium text-gray-700">{label}</span>
@@ -4236,8 +3945,6 @@ export default function App() {
             localStorage.removeItem("referralCode");
             setView({ type: "main" });
             setActiveTab("home");
-            // إطلاق الـ onboarding إذا كان تسجيلاً جديداً
-            if (isRegister) setTimeout(() => startOnboarding(), 400);
           }
         } else {
           if (data.requiresVerification) {
@@ -4273,8 +3980,6 @@ export default function App() {
               localStorage.removeItem("referralCode");
               setView({ type: "main" });
               setActiveTab("home");
-              // إطلاق الـ onboarding بعد التحقق من البريد (تسجيل جديد)
-              setTimeout(() => startOnboarding(), 400);
             } else {
               setVerifyEmail(null);
             }
@@ -8856,16 +8561,6 @@ const AdminPanel = ({
 
       {/* ===== CUSTOM DIALOG CONTAINER ===== */}
       <CustomDialogContainer />
-
-      {/* ===== ONBOARDING OVERLAY ===== */}
-      <OnboardingOverlay
-        active={onboardingActive}
-        step={onboardingStep}
-        onNext={nextOnboardingStep}
-        onSkip={skipOnboarding}
-        setActiveTab={setActiveTab}
-        setView={setView}
-      />
     </div>
   );
 }
