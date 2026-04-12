@@ -986,36 +986,56 @@ async function startServer() {
 
   // =================== GOOGLE OAUTH ===================
   app.post("/api/auth/google", authLimiter, async (req, res) => {
-    const { credential } = req.body;
-    if (!credential || typeof credential !== "string") {
-      return res.status(400).json({ error: "بيانات Google غير صحيحة" });
-    }
+    const { credential, accessToken, googleId: directGoogleId, email: directEmail, name: directName, picture: directPicture } = req.body;
+
     if (!GOOGLE_CLIENT_ID) {
       return res.status(503).json({ error: "تسجيل الدخول عبر Google غير مفعّل" });
     }
+
+    let googleId: string, email: string, name: string, avatarUrl: string | null;
+
     try {
-      // Verify Google ID token using Google's tokeninfo endpoint
-      const tokenInfoRes = await fetch(
-        `https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`
-      );
-      if (!tokenInfoRes.ok) {
-        return res.status(401).json({ error: "رمز Google غير صالح" });
-      }
-      const tokenInfo: any = await tokenInfoRes.json();
+      if (accessToken && typeof accessToken === "string") {
+        // ── مسار OAuth2 Token (الجديد) ─────────────────────────
+        // التحقق من الـ access_token عبر userinfo
+        const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        if (!userInfoRes.ok) {
+          return res.status(401).json({ error: "رمز Google غير صالح" });
+        }
+        const userInfo: any = await userInfoRes.json();
+        if (!userInfo.sub || !userInfo.email) {
+          return res.status(401).json({ error: "بيانات Google ناقصة" });
+        }
+        googleId  = userInfo.sub;
+        email     = (userInfo.email || "").toLowerCase().trim();
+        name      = userInfo.name || directName || email.split("@")[0];
+        avatarUrl = userInfo.picture || directPicture || null;
 
-      // Validate audience
-      if (tokenInfo.aud !== GOOGLE_CLIENT_ID) {
-        return res.status(401).json({ error: "رمز Google غير مخصص لهذا التطبيق" });
-      }
-      // Validate token not expired
-      if (!tokenInfo.sub || !tokenInfo.email) {
-        return res.status(401).json({ error: "بيانات Google ناقصة" });
-      }
+      } else if (credential && typeof credential === "string") {
+        // ── مسار ID Token (القديم — نبقيه للتوافق) ────────────
+        const tokenInfoRes = await fetch(
+          `https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`
+        );
+        if (!tokenInfoRes.ok) {
+          return res.status(401).json({ error: "رمز Google غير صالح" });
+        }
+        const tokenInfo: any = await tokenInfoRes.json();
+        if (tokenInfo.aud !== GOOGLE_CLIENT_ID) {
+          return res.status(401).json({ error: "رمز Google غير مخصص لهذا التطبيق" });
+        }
+        if (!tokenInfo.sub || !tokenInfo.email) {
+          return res.status(401).json({ error: "بيانات Google ناقصة" });
+        }
+        googleId  = tokenInfo.sub;
+        email     = (tokenInfo.email || "").toLowerCase().trim();
+        name      = tokenInfo.name || tokenInfo.email.split("@")[0];
+        avatarUrl = tokenInfo.picture || null;
 
-      const googleId = tokenInfo.sub;
-      const email = (tokenInfo.email || "").toLowerCase().trim();
-      const name = tokenInfo.name || tokenInfo.email.split("@")[0];
-      const avatarUrl = tokenInfo.picture || null;
+      } else {
+        return res.status(400).json({ error: "بيانات Google غير صحيحة" });
+      }
 
       // Check if user already exists with this google_id
       let { data: existingByGoogle } = await supabase
