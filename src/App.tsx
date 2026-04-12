@@ -4129,44 +4129,77 @@ export default function App() {
               try {
                 const clientId = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
                 if (!clientId) { setError("تسجيل الدخول عبر Google غير مفعّل حالياً"); return; }
-                // Load Google Identity Services
+
+                const googleCallback = async (response: any) => {
+                  setLoading(true);
+                  setError("");
+                  try {
+                    const res = await fetch("/api/auth/google", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ credential: response.credential })
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                      setUser(data);
+                      if (data.token) localStorage.setItem("authToken", data.token);
+                      localStorage.setItem("userId", String(data.id));
+                      setView({ type: "main" });
+                      setActiveTab("home");
+                      if (data.isNew) { setOnboardingStep(0); setShowOnboarding(true); }
+                    } else {
+                      setError(data.error || "فشل تسجيل الدخول عبر Google");
+                    }
+                  } catch { setError("فشل الاتصال بالخادم"); }
+                  finally { setLoading(false); }
+                };
+
+                // Load Google Identity Services script only once
                 if (!(window as any).google) {
                   await new Promise<void>((resolve, reject) => {
                     const s = document.createElement('script');
                     s.src = 'https://accounts.google.com/gsi/client';
                     s.onload = () => resolve();
-                    s.onerror = () => reject();
+                    s.onerror = () => reject(new Error("فشل تحميل خدمة Google"));
                     document.head.appendChild(s);
                   });
                 }
-                (window as any).google.accounts.id.initialize({
-                  client_id: clientId,
-                  callback: async (response: any) => {
-                    setLoading(true);
-                    setError("");
-                    try {
-                      const res = await fetch("/api/auth/google", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ credential: response.credential })
-                      });
-                      const data = await res.json();
-                      if (res.ok) {
-                        setUser(data);
-                        if (data.token) localStorage.setItem("authToken", data.token);
-                        localStorage.setItem("userId", String(data.id));
-                        setView({ type: "main" });
-                        setActiveTab("home");
-                        if (data.isNew) { setOnboardingStep(0); setShowOnboarding(true); }
-                      } else {
-                        setError(data.error || "فشل تسجيل الدخول عبر Google");
-                      }
-                    } catch { setError("فشل الاتصال بالخادم"); }
-                    finally { setLoading(false); }
-                  }
-                });
-                (window as any).google.accounts.id.prompt();
-              } catch { setError("فشل تحميل خدمة Google"); }
+
+                // Initialize only once — skip if already initialized
+                if (!(window as any).__googleGsiInitialized) {
+                  (window as any).google.accounts.id.initialize({
+                    client_id: clientId,
+                    callback: googleCallback,
+                    cancel_on_tap_outside: false,
+                    use_fedcm_for_prompt: false,
+                  });
+                  (window as any).__googleGsiInitialized = true;
+                } else {
+                  // Update callback in case state changed (e.g. setUser reference)
+                  (window as any).google.accounts.id.initialize({
+                    client_id: clientId,
+                    callback: googleCallback,
+                    cancel_on_tap_outside: false,
+                    use_fedcm_for_prompt: false,
+                  });
+                }
+
+                // Cancel any pending prompt before showing a new one
+                (window as any).google.accounts.id.cancel();
+                setTimeout(() => {
+                  (window as any).google.accounts.id.prompt((notification: any) => {
+                    if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+                      // Fallback: open Google OAuth popup if One Tap is blocked
+                      const popup = window.open(
+                        `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(window.location.origin)}&response_type=token&scope=email%20profile`,
+                        'google-login',
+                        'width=500,height=600,scrollbars=yes'
+                      );
+                      if (!popup) setError("يرجى السماح بالنوافذ المنبثقة لتسجيل الدخول عبر Google");
+                    }
+                  });
+                }, 100);
+              } catch (e: any) { setError(e?.message || "فشل تحميل خدمة Google"); }
             }}
             className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 rounded-2xl py-3.5 font-bold text-gray-700 text-sm shadow-sm active:scale-95 transition-all hover:border-gray-300"
           >
