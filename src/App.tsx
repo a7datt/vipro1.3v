@@ -4165,7 +4165,7 @@ export default function App() {
             onClick={() => {
               const clientId = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
               if (!clientId) { setError("تسجيل الدخول عبر Google غير مفعّل حالياً"); return; }
-              const redirectUri = window.location.origin + window.location.pathname;
+              const redirectUri = window.location.origin;
               const params = new URLSearchParams({
                 client_id: clientId,
                 redirect_uri: redirectUri,
