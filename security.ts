@@ -306,17 +306,21 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   res.setHeader("Server", "Web");
   res.setHeader("Content-Security-Policy", [
     "default-src 'self'",
-    // [FIX] unsafe-eval حُذف — يمنع هجمات eval-based XSS
-    "script-src 'self' 'unsafe-inline' blob:",
+    // [FIX] أُضيف accounts.google.com لتشغيل Google Identity Services (GSI)
+    "script-src 'self' 'unsafe-inline' blob: https://accounts.google.com",
     // [FIX] أُضيف fonts.googleapis.com لتحميل خط Cairo
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",
+    "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",
     "img-src 'self' data: https: blob:",
     // [FIX] أُضيف fonts.gstatic.com لتحميل ملفات الخط الفعلية
     "font-src 'self' data: https://fonts.gstatic.com",
-    "connect-src 'self' https: wss:",
+    // [FIX] أُضيف Google APIs لطلبات التحقق من التوكن و FedCM
+    "connect-src 'self' https: wss: https://accounts.google.com https://oauth2.googleapis.com",
+    // [FIX] أُضيف frame-src لـ Google renderButton (iframe) و FedCM
+    "frame-src 'self' https://accounts.google.com",
+    // frame-ancestors يبقى none لمنع Clickjacking
     "frame-ancestors 'none'",
-    "form-action 'self'",
+    "form-action 'self' https://accounts.google.com",
     "base-uri 'self'",
     "upgrade-insecure-requests",
   ].join("; "));
