@@ -4165,7 +4165,7 @@ export default function App() {
             onClick={() => {
               const clientId = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
               if (!clientId) { setError("تسجيل الدخول عبر Google غير مفعّل حالياً"); return; }
-              const redirectUri = window.location.origin;
+              const redirectUri = window.location.origin + window.location.pathname;
               const params = new URLSearchParams({
                 client_id: clientId,
                 redirect_uri: redirectUri,
@@ -6843,7 +6843,7 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
                   e.stopPropagation();
                   const res = await adminFetch(`/api/admin/ahminix/sync-order/${order.id}`, { method: "POST" });
                   const d = await res.json();
-                  showToast(d.error ? `خطأ: ${d.error}` : `${d.oldStatus} ← ${d.newStatus} (API: ${d.ahminixStatus}, 'error')`);
+                  showToast(d.error ? `خطأ: ${d.error}` : `${d.oldStatus} ← ${d.newStatus} (API: ${d.ahminixStatus})`, 'error');
                   fetchAdminOrders();
                 }} className="w-full text-xs bg-blue-50 text-blue-600 py-2 rounded-xl font-bold border border-blue-100 active:scale-95">🔄 مزامنة مع Ahminix</button>
               )}
@@ -6873,7 +6873,7 @@ const AdminOrdersTab = ({adminOrders, orderSearch, setOrderSearch, orderDateFilt
                       const res = await adminFetch(`/api/admin/orders/${order.id}/status`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ status: newStatus === "completed" ? "approved" : newStatus === "failed" ? "rejected" : newStatus, admin_response: "" })
+                        body: JSON.stringify({ status: newStatus === "failed" ? "rejected" : newStatus, admin_response: "" })
                       });
                       const d = await res.json();
                       if (d.error) showToast(`خطأ: ${d.error}`, 'error');
@@ -7044,7 +7044,7 @@ const AdminElementsTab = ({categories, subcategories, subSubCategories, fetchCat
   try {
   const res = await adminFetch(`/api/admin/${epMap[editingType]}/${editingItem.id}`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify(editingItem) });
   if (res.ok) { showToast("تم التعديل", 'success'); setEditingItem(null); setEditingType(""); loadElements(elementsType); fetchCategories(); fetchSubcategories(); fetchSubSubCategories(); fetchPaymentMethods(); fetchBanners(); fetchOffers(); }
-  else { const d = await res.json(); showToast("فشل: "+(d.error||"", 'error')); }
+  else { const d = await res.json(); showToast("فشل: "+(d.error||""), 'error'); }
   } catch { showToast("خطأ في الاتصال", 'error'); }
   };
   const delMap: Record<string,string> = { categories:"categories", subcategories:"subcategories", subSubCategories:"sub-sub-categories", products:"products", paymentMethods:"payment-methods", banners:"banners", offers:"offers", vouchers:"vouchers" };
@@ -7107,7 +7107,7 @@ const AdminElementsTab = ({categories, subcategories, subSubCategories, fetchCat
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
               <button onClick={() => { setEditingItem({...item}); setEditingType(elementsType); }} className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Pencil size={14}/></button>
-              <button onClick={async () => { await handleDelete(delMap[elementsType]||elementsType, item.id); loadElements(elementsType); }} className="p-2 bg-red-50 text-red-500 rounded-lg"><Trash2 size={14}/></button>
+              <button onClick={() => { handleDelete(delMap[elementsType]||elementsType, item.id, () => loadElements(elementsType)); }} className="p-2 bg-red-50 text-red-500 rounded-lg"><Trash2 size={14}/></button>
             </div>
           </div>
         ))}
@@ -7435,7 +7435,7 @@ const AdminPanel = ({
             showToast("✅ تم حذف المستخدم بنجاح", 'success');
             fetchAdminUsers();
           } else {
-            showToast("❌ " + (data.error || "فشل الحذف", 'error'));
+            showToast("❌ " + (data.error || "فشل الحذف"), 'error');
           }
         } catch (e) { showToast("خطأ في الاتصال", 'error'); }
       }, true);
@@ -7455,7 +7455,7 @@ const AdminPanel = ({
             showToast(`✅ تم حظر المستخدم لمدة ${mins} دقيقة`, 'success');
             fetchAdminUsers();
           } else {
-            showToast("❌ " + (data.error || "فشل الحظر", 'error'));
+            showToast("❌ " + (data.error || "فشل الحظر"), 'error');
           }
         } catch (e) { showToast("خطأ في الاتصال", 'error'); }
       }, "", "مثال: 60");
@@ -7472,7 +7472,7 @@ const AdminPanel = ({
         if (res.ok) {
           showToast(userId ? "✅ تم إرسال الإشعار للمستخدم" : `✅ تم الإرسال لـ ${data.sent || "الكل"} مستخدم`, 'success');
         } else {
-          showToast("❌ " + (data.error || "فشل الإرسال", 'error'));
+          showToast("❌ " + (data.error || "فشل الإرسال"), 'error');
         }
       } catch (e) { showToast("خطأ في الاتصال", 'error'); }
     };
@@ -7639,21 +7639,25 @@ const AdminPanel = ({
       }
     };
 
-    const handleDelete = async (type: string, id: number) => {
+    const handleDelete = async (type: string, id: number, onSuccess?: () => void) => {
       showConfirm("هل أنت متأكد من الحذف؟", "تأكيد الحذف", async () => {
-        const res = await adminFetch(`/api/admin/${type}/${id}`, { method: "DELETE" });
-        const result = await res.json();
-        if (res.ok) {
-          fetchCategories();
-          fetchSubcategories();
-          fetchSubSubCategories();
-          if (type === 'payment-methods') fetchPaymentMethods();
-          if (type === 'banners') fetchBanners();
-          if (type === 'offers') fetchOffers();
-          showToast(result.message || "✅ تم الحذف بنجاح", 'success');
-        } else {
-          const errData = result;
-          showToast("❌ " + (errData.error || "فشل الحذف"), 'error');
+        try {
+          const res = await adminFetch(`/api/admin/${type}/${id}`, { method: "DELETE" });
+          const result = await res.json();
+          if (res.ok) {
+            fetchCategories();
+            fetchSubcategories();
+            fetchSubSubCategories();
+            if (type === 'payment-methods') fetchPaymentMethods();
+            if (type === 'banners') fetchBanners();
+            if (type === 'offers') fetchOffers();
+            showToast(result.message || "✅ تم الحذف بنجاح", 'success');
+            if (onSuccess) onSuccess();
+          } else {
+            showToast("❌ " + (result.error || "فشل الحذف"), 'error');
+          }
+        } catch (e) {
+          showToast("❌ خطأ في الاتصال بالخادم", 'error');
         }
       }, true);
     };
