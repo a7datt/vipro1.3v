@@ -558,6 +558,29 @@ function isDuplicateOrder(userId: string, productId: string, qty: number, player
 }
 
 /**
+ * يتحقق من حالة الحظر المؤقت للمستخدم ويرفع الحظر تلقائياً إذا انتهت المدة
+ * يُرجع true إذا كان المستخدم محظوراً الآن
+ */
+async function checkAndClearBan(user: any): Promise<{ banned: boolean; message?: string }> {
+  if (!user.is_banned && !user.blocked_until) return { banned: false };
+  const now = new Date();
+  if (user.blocked_until) {
+    const until = new Date(user.blocked_until);
+    if (until <= now) {
+      // الحظر انتهى — نرفعه تلقائياً
+      await supabase.from("users").update({ is_banned: false, blocked_until: null }).eq("id", user.id);
+      return { banned: false };
+    }
+    const remaining = Math.ceil((until.getTime() - now.getTime()) / 60000);
+    return { banned: true, message: `تم إيقاف حسابك مؤقتاً. المتبقي: ${remaining} دقيقة.` };
+  }
+  if (user.is_banned) {
+    return { banned: true, message: "تم إيقاف حسابك. تواصل مع الدعم." };
+  }
+  return { banned: false };
+}
+
+/**
  * يجلب رصيد ومعلومات حساب Ahminix
  */
 async function ahminixGetProfile(): Promise<any> {
@@ -1046,8 +1069,9 @@ async function startServer() {
 
       if (existingByGoogle) {
         // User exists via Google - login directly
-        if (existingByGoogle.is_banned) {
-          return res.status(403).json({ error: "تم إيقاف حسابك. تواصل مع الدعم." });
+        const banCheckGoogle = await checkAndClearBan(existingByGoogle);
+        if (banCheckGoogle.banned) {
+          return res.status(403).json({ error: banCheckGoogle.message });
         }
         // Update last login stats
         const today = new Date().toISOString().split("T")[0];
@@ -1120,8 +1144,9 @@ async function startServer() {
       const { data: finalUser } = await supabase.from("users").select("*").eq("id", userId).single();
       if (!finalUser) return res.status(500).json({ error: "خطأ في جلب بيانات المستخدم" });
 
-      if (finalUser.is_banned) {
-        return res.status(403).json({ error: "تم إيقاف حسابك. تواصل مع الدعم." });
+      const banCheckFinal = await checkAndClearBan(finalUser);
+      if (banCheckFinal.banned) {
+        return res.status(403).json({ error: banCheckFinal.message });
       }
 
       const { password_hash: _ph2, ...userWithoutPass2 } = finalUser;
@@ -1155,7 +1180,8 @@ async function startServer() {
     const { data: user } = await supabase.from("users").select("*").eq("email", email.toLowerCase().trim()).single();
 
     if (user) {
-      if (user.is_banned) return res.status(403).json({ error: "تم إيقاف حسابك. تواصل مع الدعم." });
+      const banCheck1 = await checkAndClearBan(user);
+      if (banCheck1.banned) return res.status(403).json({ error: banCheck1.message });
       if (!user.is_verified) return res.status(403).json({ error: "يجب تفعيل حسابك أولاً عبر البريد الإلكتروني", requiresVerification: true, email: user.email });
       const isMatch = await bcrypt.compare(password, user.password_hash);
       if (isMatch) {
@@ -1445,15 +1471,16 @@ async function startServer() {
 
       if (!user || !product) return res.status(404).json({ error: "Not found" });
       // تحقق من أن المستخدم لم يُحظر
-      if (user.is_banned || user.is_blocked) {
+      const banCheckOrder = await checkAndClearBan(user);
+      if (banCheckOrder.banned || user.is_blocked) {
         logSecurityEvent("banned-user-order", req, `userId:${userId}`);
-        return res.status(403).json({ error: "حسابك موقوف" });
+        return res.status(403).json({ error: banCheckOrder.message || "حسابك موقوف" });
       }
 
       // حساب السعر الصحيح حسب نوع المتجر
-      const unitPrice = product.store_type === 'quantities' || product.store_type === 'external_api'
-        ? (parseFloat(product.price_per_unit) || parseFloat(product.price) || 0)
-        : (parseFloat(product.price) || 0);
+      // price = سعر البيع النهائي (سعر API + نسبة الربح) — يُستخدم دائماً
+      // price_per_unit = سعر التكلفة من API فقط (للإحصاء والتقارير)
+      const unitPrice = parseFloat(product.price) || 0;
       let total = unitPrice * (Number(quantity) || 1);
 
       const { data: stats } = await supabase.from("user_stats").select("*").eq("user_id", userId).single();
@@ -3043,6 +3070,37 @@ async function startServer() {
       let finalStatus = status;
       let updatedMeta = { ...metaParsed };
 
+      // =================== تحديث مباشر للحالة من الأدمن ===================
+      // إذا اختار الأدمن completed/processing/cancelled مباشرة نحفظها بدون API خارجي
+      if (status === 'completed' || status === 'processing' || status === 'cancelled') {
+        if (status === 'completed') {
+          updatedMeta = { ...updatedMeta, admin_completed_at: new Date().toISOString() };
+        }
+        const { error: directErr } = await supabase.from("orders").update({
+          status: finalStatus,
+          admin_response: responseText || null,
+          meta: JSON.stringify(updatedMeta)
+        }).eq("id", req.params.id);
+        if (directErr) throw directErr;
+        await supabase.from("notifications").insert({
+          user_id: order.user_id,
+          title: `تحديث حالة الطلب #${req.params.id}`,
+          message: status === 'completed'
+            ? `تم اكتمال طلبك #${req.params.id} بنجاح. ${responseText || ""}`
+            : status === 'cancelled'
+            ? `تم إلغاء طلبك #${req.params.id}. ${responseText || ""}`
+            : `حالة طلبك الآن: ${status}. ${responseText || ""}`,
+          type: status === 'completed' ? "success" : status === 'cancelled' ? "warning" : "info"
+        });
+        if (order.user_id && responseText) {
+          sendTelegramToUser(order.user_id, `🔔 وصلك رد جديد على طلبك #${req.params.id}:
+
+${responseText}`);
+        }
+        return res.json({ success: true, finalStatus });
+      }
+      // ==================================================================================
+
       // =================== ADMIN MANUAL APPROVE — نفس منطق AUTO تماماً ===================
       if (status === 'approved' && order.status === 'pending_admin') {
         const product = order.order_items?.[0]?.products;
@@ -3776,8 +3834,7 @@ async function startServer() {
             );
             await supabase.from("sub_sub_categories").delete().in("id", subsubIds);
           }
-          await safeDeleteProductsBy("subcategory_id", id);
-          // delete each sub's products
+          // حذف منتجات كل قسم فرعي
           for (const subId of subIds) {
             await safeDeleteProductsBy("subcategory_id", subId);
           }
