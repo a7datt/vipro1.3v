@@ -8329,27 +8329,31 @@ const AdminPanel = ({
   };
 
   if (isAdmin) return (
-    <AdminPanel 
-      user={user}
-      fetchUser={fetchUser}
-      categories={categories}
-      subcategories={subcategories}
-      subSubCategories={subSubCategories}
-      fetchCategories={fetchCategories}
-      fetchSubcategories={fetchSubcategories}
-      fetchSubSubCategories={fetchSubSubCategories}
-      paymentMethods={paymentMethods}
-      fetchPaymentMethods={fetchPaymentMethods}
-      banners={banners}
-      fetchBanners={fetchBanners}
-      offers={offers}
-      fetchOffers={fetchOffers}
-      setIsAdmin={setIsAdmin}
-      theme={theme}
-      adminTab={adminTab}
-      setAdminTab={setAdminTab}
-      setSiteSettings={setSiteSettings}
-    />
+    <>
+      <ToastContainer />
+      <CustomDialogContainer />
+      <AdminPanel 
+        user={user}
+        fetchUser={fetchUser}
+        categories={categories}
+        subcategories={subcategories}
+        subSubCategories={subSubCategories}
+        fetchCategories={fetchCategories}
+        fetchSubcategories={fetchSubcategories}
+        fetchSubSubCategories={fetchSubSubCategories}
+        paymentMethods={paymentMethods}
+        fetchPaymentMethods={fetchPaymentMethods}
+        banners={banners}
+        fetchBanners={fetchBanners}
+        offers={offers}
+        fetchOffers={fetchOffers}
+        setIsAdmin={setIsAdmin}
+        theme={theme}
+        adminTab={adminTab}
+        setAdminTab={setAdminTab}
+        setSiteSettings={setSiteSettings}
+      />
+    </>
   );
 
   return (
