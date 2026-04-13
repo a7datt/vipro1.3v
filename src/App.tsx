@@ -2606,7 +2606,8 @@ export default function App() {
             return (
             <div
               key={prod.id}
-              className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${isUnavailable ? "border-gray-100 opacity-60 grayscale" : isFavorite(`prod_${prod.id}`) ? "border-yellow-400" : "border-gray-100"}`}
+              className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all relative ${isUnavailable ? "border-gray-100 opacity-60 grayscale" : isFavorite(`prod_${prod.id}`) ? "border-yellow-400" : "border-gray-100"}`}
+              style={{ aspectRatio: '3/1' }}
               onContextMenu={e => e.preventDefault()}
               onTouchStart={e => { lpTimerProd = setTimeout(() => useLongPressHandlers({ ...prod, _fav_key: `prod_${prod.id}`, _fav_type: "product", _fav_label: prod.name, _fav_image: prod.image_url, _view_id: view.id, _view_data: view.data, _view_fromSubSub: view.fromSubSub, _view_catId: view.catId, _view_subId: view.subId, _view_subName: view.subName }, e), 600); }}
               onTouchEnd={() => clearTimeout(lpTimerProd)}
@@ -2615,36 +2616,31 @@ export default function App() {
               onMouseUp={() => clearTimeout(lpTimerProd)}
               onMouseLeave={() => clearTimeout(lpTimerProd)}
             >
-              {/* Image banner 3:1 ratio */}
-              <div className="relative w-full" style={{ aspectRatio: '3/1' }}>
-                <img
-                  loading="lazy"
-                  src={prod.image_url || "https://picsum.photos/seed/prod/900/300"}
-                  alt={prod.name}
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-                {/* Type badge top-left */}
-                <span className={`absolute top-2 right-2 ${typeBg} text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm`}>
-                  {typeLabel}
-                </span>
-                {/* Favorite star */}
-                {isFavorite(`prod_${prod.id}`) && (
-                  <span className="absolute top-2 left-2 text-yellow-400 text-sm drop-shadow">⭐</span>
-                )}
-                {/* Unavailable overlay */}
-                {isUnavailable && (
-                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                    <span className="bg-white/90 text-gray-700 text-xs font-bold px-3 py-1 rounded-full">غير متوفر</span>
-                  </div>
-                )}
-              </div>
-              {/* Content */}
-              <div className="p-3 flex items-center justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-bold text-gray-800 text-sm truncate">{prod.name}</h4>
+              <div className="flex h-full" dir="rtl">
+                {/* Right: Product Image 1:1 */}
+                <div className="relative shrink-0 h-full" style={{ aspectRatio: '1/1' }}>
+                  <img
+                    loading="lazy"
+                    src={prod.image_url || "https://picsum.photos/seed/prod/300/300"}
+                    alt={prod.name}
+                    className="h-full w-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                  {/* Type badge */}
+                  <span className={`absolute top-2 right-2 ${typeBg} text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm`}>
+                    {typeLabel}
+                  </span>
+                  {/* Favorite star */}
+                  {isFavorite(`prod_${prod.id}`) && (
+                    <span className="absolute top-2 left-2 text-yellow-400 text-sm drop-shadow">⭐</span>
+                  )}
+                </div>
+
+                {/* Middle: Name, Description, Price — close to image */}
+                <div className="flex flex-col justify-center px-3 py-2 min-w-0 overflow-hidden items-start shrink-0 max-w-[45%]">
+                  <h4 className="font-bold text-gray-800 text-sm truncate w-full">{prod.name}</h4>
                   {prod.description && (
-                    <p className="text-gray-400 text-[11px] leading-snug mt-0.5 line-clamp-1">{prod.description}</p>
+                    <p className="text-gray-400 text-[11px] leading-snug mt-0.5 line-clamp-2">{prod.description}</p>
                   )}
                   <p className={`${isUnavailable ? "text-gray-400" : theme.text} font-bold text-sm mt-1`}>
                     {isQuantity
@@ -2652,23 +2648,37 @@ export default function App() {
                       : `${(parseFloat(prod.price) || 0).toFixed(2)} $`}
                   </p>
                 </div>
-                <button
-                  disabled={isUnavailable}
-                  onClick={() => {
-                    if (isUnavailable) return;
-                    if (!user) return setView({ type: "login" });
-                    if (isQuick) {
-                      setView({ type: "quick_order", data: prod });
-                    } else {
-                      setCheckoutQuantity(parseInt(String(prod.min_quantity)) || 0);
-                      setView({ type: "checkout", data: prod });
-                    }
-                  }}
-                  className={`shrink-0 px-4 py-2 rounded-xl font-bold text-sm transition-colors ${isUnavailable ? "bg-gray-100 text-gray-400 cursor-not-allowed" : `${theme.button} text-white ${theme.buttonHover}`}`}
-                >
-                  {isUnavailable ? "—" : isQuick ? "طلب" : isApi ? "⚡ شراء" : "شراء"}
-                </button>
+
+                {/* Spacer */}
+                <div className="flex-1" />
+
+                {/* Left: Buy Button */}
+                <div className="flex flex-col items-center justify-center px-3 shrink-0">
+                  <button
+                    disabled={isUnavailable}
+                    onClick={() => {
+                      if (isUnavailable) return;
+                      if (!user) return setView({ type: "login" });
+                      if (isQuick) {
+                        setView({ type: "quick_order", data: prod });
+                      } else {
+                        setCheckoutQuantity(parseInt(String(prod.min_quantity)) || 0);
+                        setView({ type: "checkout", data: prod });
+                      }
+                    }}
+                    className={`px-4 py-2 rounded-xl font-bold text-sm transition-colors whitespace-nowrap ${isUnavailable ? "bg-gray-100 text-gray-400 cursor-not-allowed" : `${theme.button} text-white ${theme.buttonHover}`}`}
+                  >
+                    {isUnavailable ? "—" : isQuick ? "طلب" : isApi ? "⚡ شراء" : "شراء"}
+                  </button>
+                </div>
               </div>
+
+              {/* Unavailable overlay */}
+              {isUnavailable && (
+                <div className="absolute inset-0 bg-black/30 flex items-center justify-center pointer-events-none">
+                  <span className="bg-white/90 text-gray-700 text-xs font-bold px-3 py-1 rounded-full">غير متوفر</span>
+                </div>
+              )}
             </div>
             );
           })}
