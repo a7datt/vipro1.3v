@@ -1171,7 +1171,8 @@ export default function App() {
           title: 'تم ربط حسابك ببوت تلجرام',
           message: 'لقد تم ربط حسابك ببوت تلجرام. إن لم تكن أنت، يرجى الضغط على فك الارتباط وتغيير بياناتك.',
           type: 'warning',
-          action: 'unlink'
+          action: 'unlink',
+          is_read: false
         });
       }
       setNotifications(serverNotifs);
@@ -1667,16 +1668,18 @@ export default function App() {
             <span className="font-bold">{user.balance.toFixed(2)} $</span>
           </div>
         )}
-        <button onClick={() => setNotificationsOpen(true)} className="p-2 hover:bg-gray-50 rounded-full relative">
-          <Bell size={22} className="text-gray-600" />
+        <div className="relative inline-flex">
+          <button onClick={() => setNotificationsOpen(true)} className="p-2 hover:bg-gray-50 rounded-full">
+            <Bell size={22} className="text-gray-600" />
+          </button>
           {(Array.isArray(notifications) ? notifications : []).filter(n => !n.is_read).length > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-red-500 rounded-full border-2 border-white flex items-center justify-center">
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 rounded-full border-2 border-white flex items-center justify-center pointer-events-none z-10">
               <span className="text-white text-[9px] font-bold leading-none px-0.5">
                 {(Array.isArray(notifications) ? notifications : []).filter(n => !n.is_read).length > 9 ? "9+" : (Array.isArray(notifications) ? notifications : []).filter(n => !n.is_read).length}
               </span>
             </span>
           )}
-        </button>
+        </div>
       </div>
     </header>
   );
@@ -1814,7 +1817,7 @@ export default function App() {
         <div className="relative">
           <ShoppingBag size={22} />
           {pendingOrders > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">
+            <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold rounded-full w-[18px] h-[18px] flex items-center justify-center leading-none border-2 border-white z-10">
               {pendingOrders > 9 ? "9+" : pendingOrders}
             </span>
           )}
@@ -1828,7 +1831,7 @@ export default function App() {
         <div className="relative">
           <User size={22} />
           {unreadMsgs > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">
+            <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold rounded-full w-[18px] h-[18px] flex items-center justify-center leading-none border-2 border-white z-10">
               {unreadMsgs > 9 ? "9+" : unreadMsgs}
             </span>
           )}
@@ -2591,14 +2594,19 @@ export default function App() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4">
+        <div className="grid grid-cols-1 gap-3">
           {products.map(prod => {
             const isUnavailable = prod.available === false;
+            const isApi = prod.store_type === 'external_api';
+            const isQuantity = prod.store_type === 'quantities';
+            const isQuick = prod.store_type === 'quick_order';
             let lpTimerProd: any = null;
+            const typeLabel = isApi ? 'تلقائي' : isQuick ? 'سريع' : isQuantity ? 'كمية' : 'يدوي';
+            const typeBg = isApi ? 'bg-blue-500' : isQuick ? 'bg-purple-500' : isQuantity ? 'bg-teal-500' : 'bg-gray-500';
             return (
             <div
               key={prod.id}
-              className={`bg-white p-4 rounded-2xl border shadow-sm flex flex-col gap-4 transition-all ${isUnavailable ? "border-gray-100 opacity-60 grayscale" : isFavorite(`prod_${prod.id}`) ? "border-yellow-400" : "border-gray-100"}`}
+              className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${isUnavailable ? "border-gray-100 opacity-60 grayscale" : isFavorite(`prod_${prod.id}`) ? "border-yellow-400" : "border-gray-100"}`}
               onContextMenu={e => e.preventDefault()}
               onTouchStart={e => { lpTimerProd = setTimeout(() => useLongPressHandlers({ ...prod, _fav_key: `prod_${prod.id}`, _fav_type: "product", _fav_label: prod.name, _fav_image: prod.image_url, _view_id: view.id, _view_data: view.data, _view_fromSubSub: view.fromSubSub, _view_catId: view.catId, _view_subId: view.subId, _view_subName: view.subName }, e), 600); }}
               onTouchEnd={() => clearTimeout(lpTimerProd)}
@@ -2607,48 +2615,60 @@ export default function App() {
               onMouseUp={() => clearTimeout(lpTimerProd)}
               onMouseLeave={() => clearTimeout(lpTimerProd)}
             >
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden relative">
-                  <img loading="lazy" src={prod.image_url || "https://picsum.photos/seed/prod/100/100"} alt={prod.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  {isFavorite(`prod_${prod.id}`) && <span className="absolute top-0.5 right-0.5 text-yellow-400 text-xs">⭐</span>}
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-bold text-gray-800">{prod.name}</h4>
-                    {isUnavailable && (
-                      <span className="text-[9px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-bold shrink-0">غير متوفر</span>
-                    )}
+              {/* Image banner 3:1 ratio */}
+              <div className="relative w-full" style={{ aspectRatio: '3/1' }}>
+                <img
+                  loading="lazy"
+                  src={prod.image_url || "https://picsum.photos/seed/prod/900/300"}
+                  alt={prod.name}
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+                {/* Type badge top-left */}
+                <span className={`absolute top-2 right-2 ${typeBg} text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm`}>
+                  {typeLabel}
+                </span>
+                {/* Favorite star */}
+                {isFavorite(`prod_${prod.id}`) && (
+                  <span className="absolute top-2 left-2 text-yellow-400 text-sm drop-shadow">⭐</span>
+                )}
+                {/* Unavailable overlay */}
+                {isUnavailable && (
+                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                    <span className="bg-white/90 text-gray-700 text-xs font-bold px-3 py-1 rounded-full">غير متوفر</span>
                   </div>
-                  <p className={`${isUnavailable ? "text-gray-400" : theme.text} font-bold`}>
-                    {prod.store_type === 'quantities'
+                )}
+              </div>
+              {/* Content */}
+              <div className="p-3 flex items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-bold text-gray-800 text-sm truncate">{prod.name}</h4>
+                  {prod.description && (
+                    <p className="text-gray-400 text-[11px] leading-snug mt-0.5 line-clamp-1">{prod.description}</p>
+                  )}
+                  <p className={`${isUnavailable ? "text-gray-400" : theme.text} font-bold text-sm mt-1`}>
+                    {isQuantity
                       ? `${(parseFloat(prod.price_per_unit) || 0).toFixed(6)} $ / وحدة`
                       : `${(parseFloat(prod.price) || 0).toFixed(2)} $`}
                   </p>
                 </div>
+                <button
+                  disabled={isUnavailable}
+                  onClick={() => {
+                    if (isUnavailable) return;
+                    if (!user) return setView({ type: "login" });
+                    if (isQuick) {
+                      setView({ type: "quick_order", data: prod });
+                    } else {
+                      setCheckoutQuantity(parseInt(String(prod.min_quantity)) || 0);
+                      setView({ type: "checkout", data: prod });
+                    }
+                  }}
+                  className={`shrink-0 px-4 py-2 rounded-xl font-bold text-sm transition-colors ${isUnavailable ? "bg-gray-100 text-gray-400 cursor-not-allowed" : `${theme.button} text-white ${theme.buttonHover}`}`}
+                >
+                  {isUnavailable ? "—" : isQuick ? "طلب" : isApi ? "⚡ شراء" : "شراء"}
+                </button>
               </div>
-              <p className="text-gray-500 text-sm leading-relaxed">{prod.description || "لا يوجد وصف متاح لهذا المنتج."}</p>
-              {prod.store_type === 'external_api' && !isUnavailable && (
-                <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 text-[10px] font-bold px-3 py-1.5 rounded-lg w-fit">
-                  <ExternalLink size={11} />
-                  شحن فوري
-                </div>
-              )}
-              <button
-                disabled={isUnavailable}
-                onClick={() => {
-                  if (isUnavailable) return;
-                  if (!user) return setView({ type: "login" });
-                  if (prod.store_type === 'quick_order') {
-                    setView({ type: "quick_order", data: prod });
-                  } else {
-                    setCheckoutQuantity(parseInt(String(prod.min_quantity)) || 0);
-                    setView({ type: "checkout", data: prod });
-                  }
-                }}
-                className={`w-full py-3 rounded-xl font-bold transition-colors ${isUnavailable ? "bg-gray-100 text-gray-400 cursor-not-allowed" : `${theme.button} text-white ${theme.buttonHover}`}`}
-              >
-                {isUnavailable ? "غير متوفر حالياً" : prod.store_type === 'quick_order' ? "طلب سريع" : prod.store_type === 'external_api' ? "شراء الآن ⚡" : "شراء الآن"}
-              </button>
             </div>
             );
           })}
@@ -5389,8 +5409,20 @@ export default function App() {
 
     const handleDeleteAutoReply = async (id: number) => {
       showConfirm("هل تريد حذف هذا الرد التلقائي؟", "حذف الرد التلقائي", async () => {
-        const res = await adminFetch(`/api/admin/auto-replies/${id}`, { method: "DELETE" });
-        if (res.ok) fetchAutoReplies();
+        try {
+          const res = await adminFetch(`/api/admin/auto-replies/${id}`, {
+            method: "DELETE",
+            headers: { "x-admin-token": localStorage.getItem("adminToken") || "" }
+          });
+          if (res.ok) {
+            setAutoReplies(prev => prev.filter((r: any) => r.id !== id));
+            showToast("✅ تم حذف الرد التلقائي", 'success');
+          } else {
+            showToast("❌ فشل حذف الرد التلقائي", 'error');
+          }
+        } catch (e) {
+          showToast("❌ فشل الاتصال بالخادم", 'error');
+        }
       }, true);
     };
 
@@ -5571,14 +5603,16 @@ export default function App() {
               onClick={() => setSelectedChatUser(chat)}
               className={`p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4 text-right transition-all active:scale-[0.98] ${chat.is_guest ? 'bg-red-50 border-red-100' : 'bg-white'}`}
             >
-              <div className="w-12 h-12 bg-gray-50 rounded-full overflow-hidden relative border border-gray-100">
-                {chat.avatar_url ? (
-                  <img loading="lazy" src={chat.avatar_url} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-400"><User size={24} /></div>
-                )}
+              <div className="relative w-12 h-12 shrink-0">
+                <div className="w-12 h-12 bg-gray-50 rounded-full overflow-hidden border border-gray-100">
+                  {chat.avatar_url ? (
+                    <img loading="lazy" src={chat.avatar_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-400"><User size={24} /></div>
+                  )}
+                </div>
                 {chat.unread_count > 0 && (
-                  <div className="absolute -top-1 -right-1 w-5 h-5 bg-brand text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white">
+                  <div className="absolute -top-1 -right-1 w-5 h-5 bg-brand text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white z-10">
                     {chat.unread_count}
                   </div>
                 )}
@@ -8319,7 +8353,7 @@ const AdminPanel = ({
                 className={`flex flex-col items-center gap-0.5 relative ${adminTab===item.tab?"text-[var(--brand)]":"text-gray-400"}`}>
                 {item.icon}
                 <span className="text-[9px] font-medium">{item.label}</span>
-                {item.badge > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-[var(--brand)] text-white text-[8px] font-bold rounded-full flex items-center justify-center">{item.badge}</span>}
+                {item.badge > 0 && <span className="absolute -top-1.5 -right-1.5 w-[18px] h-[18px] bg-[var(--brand)] text-white text-[8px] font-bold rounded-full flex items-center justify-center border-2 border-white z-10">{item.badge}</span>}
               </button>
             );
           })}
