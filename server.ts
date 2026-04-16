@@ -242,10 +242,119 @@ async function verifyShamCashTx(txNumber: string, accountAddress: string): Promi
   } catch (e: any) { return { found: false, debug: String(e) }; }
 }
 
-// =================== AHMINIX API HELPERS ===================
-const AHMINIX_BASE = "https://fastcard1.store/client/api";
-const AHMINIX_TOKEN = process.env.AHMINIX_API_TOKEN || "";
-if (!AHMINIX_TOKEN) console.warn("[SECURITY] ⚠️  AHMINIX_API_TOKEN غير مضبوط في .env");
+// =================== PROVIDERS API — MULTI-PROVIDER SYSTEM ===================
+// التوكنات وروابط API تُخزَّن مشفرة في جدول providers بقاعدة البيانات
+// لا يوجد أي رابط أو توكن ثابت في الكود
+
+// ─── مفتاح التشفير من .env (AES-256-GCM) ───────────────────────────────────
+// يجب أن يكون 64 حرف hex (32 بايت). مثال لتوليده:
+//   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+const PROVIDER_ENCRYPTION_KEY = process.env.PROVIDER_ENCRYPTION_KEY || "";
+if (!PROVIDER_ENCRYPTION_KEY) {
+  console.error("[SECURITY] ❌ PROVIDER_ENCRYPTION_KEY غير مضبوط في .env — بيانات المزودين لن تعمل!");
+}
+
+const ENCRYPT_ALGO = "aes-256-gcm";
+
+/**
+ * تشفير نص باستخدام AES-256-GCM
+ * الناتج: iv:authTag:ciphertext (كل جزء base64)
+ */
+function encryptProviderData(plaintext: string): string {
+  if (!PROVIDER_ENCRYPTION_KEY) throw new Error("PROVIDER_ENCRYPTION_KEY غير مضبوط");
+  const key = Buffer.from(PROVIDER_ENCRYPTION_KEY, "hex");
+  const iv = crypto.randomBytes(12); // 96-bit IV for GCM
+  const cipher = crypto.createCipheriv(ENCRYPT_ALGO, key, iv) as any;
+  const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return `${iv.toString("base64")}:${authTag.toString("base64")}:${encrypted.toString("base64")}`;
+}
+
+/**
+ * فك تشفير نص مشفر بـ AES-256-GCM
+ */
+function decryptProviderData(ciphertext: string): string {
+  if (!PROVIDER_ENCRYPTION_KEY) throw new Error("PROVIDER_ENCRYPTION_KEY غير مضبوط");
+  const parts = ciphertext.split(":");
+  if (parts.length !== 3) throw new Error("تنسيق التشفير غير صحيح");
+  const [ivB64, tagB64, dataB64] = parts;
+  const key = Buffer.from(PROVIDER_ENCRYPTION_KEY, "hex");
+  const iv = Buffer.from(ivB64, "base64");
+  const authTag = Buffer.from(tagB64, "base64");
+  const encrypted = Buffer.from(dataB64, "base64");
+  const decipher = crypto.createDecipheriv(ENCRYPT_ALGO, key, iv) as any;
+  decipher.setAuthTag(authTag);
+  const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+  return decrypted.toString("utf8");
+}
+
+/**
+ * يتحقق هل القيمة مشفرة بتنسيق iv:tag:data
+ */
+function isEncrypted(value: string): boolean {
+  if (!value) return false;
+  const parts = value.split(":");
+  return parts.length === 3 && parts.every(p => /^[A-Za-z0-9+/=]+$/.test(p));
+}
+
+// ─── Cache بسيط للمزودين (TTL: 60 ثانية) لتقليل queries على DB ─────────────
+const _providerCache = new Map<number, { data: any; ts: number }>();
+const PROVIDER_CACHE_TTL = 60_000;
+
+/**
+ * جلب بيانات مزود من DB مع cache وفك تشفير التوكن
+ */
+async function getProvider(providerId: number): Promise<{
+  id: number; name: string; base_url: string; api_token: string
+} | null> {
+  const cached = _providerCache.get(providerId);
+  if (cached && Date.now() - cached.ts < PROVIDER_CACHE_TTL) {
+    return cached.data;
+  }
+  const { data, error } = await supabase
+    .from("providers")
+    .select("id, name, base_url, api_token_enc, is_active")
+    .eq("id", providerId)
+    .eq("is_active", true)
+    .single();
+  if (error || !data) return null;
+  let token = "";
+  try {
+    token = isEncrypted(data.api_token_enc) ? decryptProviderData(data.api_token_enc) : data.api_token_enc;
+  } catch (e: any) {
+    console.error(`[PROVIDER] فشل فك تشفير توكن المزود #${providerId}:`, e.message);
+    return null;
+  }
+  const result = {
+    id: data.id,
+    name: data.name,
+    base_url: (data.base_url || "").replace(/\/$/, ""),
+    api_token: token,
+  };
+  _providerCache.set(providerId, { data: result, ts: Date.now() });
+  return result;
+}
+
+/** إبطال cache مزود معين (بعد التعديل مثلاً) */
+function invalidateProviderCache(providerId?: number) {
+  if (providerId) _providerCache.delete(providerId);
+  else _providerCache.clear();
+}
+
+/**
+ * جلب مزود منتج معين عبر products.provider_id
+ */
+async function getProviderForProduct(productId: number): Promise<{
+  id: number; name: string; base_url: string; api_token: string
+} | null> {
+  const { data: product } = await supabase
+    .from("products")
+    .select("provider_id")
+    .eq("id", productId)
+    .single();
+  if (!product?.provider_id) return null;
+  return getProvider(product.provider_id);
+}
 
 function generateUUIDv4(): string {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
@@ -256,7 +365,7 @@ function generateUUIDv4(): string {
 }
 
 /**
- * يرسل طلب GET إلى Ahminix API
+ * يرسل طلب GET إلى Provider API
  */
 // ============================================================
 // EMAIL / OTP HELPERS (Resend API)
@@ -390,29 +499,29 @@ function normalizeReplayApi(raw: any): string[] {
   return result;
 }
 
-async function ahminixGet(path: string): Promise<any> {
-  const url = `${AHMINIX_BASE}${path}`;
-  console.log("[AHMINIX] GET:", url);
+async function providerGet(base_url: string, api_token: string, path: string): Promise<any> {
+  const url = `${base_url}${path}`;
+  console.log("[PROVIDER] GET:", url);
   const res = await fetch(url, {
-    headers: { "api-token": AHMINIX_TOKEN, "Accept": "application/json" }
+    headers: { "api-token": api_token, "Accept": "application/json" }
   });
   const text = await res.text();
-  console.log("[AHMINIX] Response:", res.status, text.substring(0, 300));
+  console.log("[PROVIDER] Response:", res.status, text.substring(0, 300));
   try { return JSON.parse(text); } catch { return { error: text }; }
 }
 
 /**
- * يرسل طلب POST لإنشاء طلب في Ahminix API
- * Per API docs: POST /newOrder/{productId}/params?qty=1&playerId=xxx&order_uuid=xxx
+ * يرسل طلب POST لإنشاء طلب عند المزود
+ * POST /newOrder/{productId}/params?qty=1&playerId=xxx&order_uuid=xxx
  */
-async function ahminixCreateOrder(
+async function providerCreateOrder(
+  base_url: string,
+  api_token: string,
   productId: string,
   qty: number,
   playerId: string,
   orderUuid: string
 ): Promise<any> {
-  // POST /newOrder/{productId} - يقبل playerId كـ optional
-  // إذا لم يكن هناك playerId لا نرسله نهائياً
   const params: Record<string, string> = {
     qty: String(qty),
     order_uuid: orderUuid,
@@ -420,32 +529,30 @@ async function ahminixCreateOrder(
   if (playerId && playerId.trim() !== "") {
     params.playerId = playerId.trim();
   }
-
   const qs = new URLSearchParams(params).toString();
-  const url = `${AHMINIX_BASE}/newOrder/${productId}/params?${qs}`;
-  console.log("[AHMINIX] POST order URL:", url.replace(AHMINIX_TOKEN, "***"));
-
+  const url = `${base_url}/newOrder/${productId}/params?${qs}`;
+  console.log("[PROVIDER] POST order URL:", url.replace(api_token, "***"));
   const res = await fetch(url, {
     method: "POST",
     headers: {
-      "api-token": AHMINIX_TOKEN,
+      "api-token": api_token,
       "Accept": "application/json",
       "Content-Type": "application/json"
     }
   });
   const text = await res.text();
-  console.log("[AHMINIX] Order response:", res.status, text.substring(0, 500));
+  console.log("[PROVIDER] Order response:", res.status, text.substring(0, 500));
   try { return JSON.parse(text); } catch { return { error: text }; }
 }
 
 /**
- * يتحقق من حالة طلب في Ahminix
+ * يتحقق من حالة طلب عند مزود معين
  */
-async function ahminixCheckOrder(orderId: string, isUuid = false): Promise<any> {
+async function providerCheckOrder(base_url: string, api_token: string, orderId: string, isUuid = false): Promise<any> {
   const param = isUuid
     ? `orders=["${orderId}"]&uuid=1`
     : `orders=[${orderId}]`;
-  return ahminixGet(`/check?${param}`);
+  return providerGet(base_url, api_token, `/check?${param}`);
 }
 
 /**
@@ -532,8 +639,8 @@ async function getFinalOrderStatus(
 /**
  * يجلب كل المنتجات من Ahminix
  */
-async function ahminixGetProducts(): Promise<any[]> {
-  const data = await ahminixGet("/products");
+async function providerGetProducts(base_url: string, api_token: string): Promise<any[]> {
+  const data = await providerGet(base_url, api_token, "/products");
   return Array.isArray(data) ? data : [];
 }
 
@@ -581,10 +688,10 @@ async function checkAndClearBan(user: any): Promise<{ banned: boolean; message?:
 }
 
 /**
- * يجلب رصيد ومعلومات حساب Ahminix
+ * يجلب رصيد ومعلومات حساب مزود معين
  */
-async function ahminixGetProfile(): Promise<any> {
-  return ahminixGet("/profile");
+async function providerGetProfile(base_url: string, api_token: string): Promise<any> {
+  return providerGet(base_url, api_token, "/profile");
 }
 
 async function startServer() {
@@ -1518,8 +1625,9 @@ async function startServer() {
       // =================== EXTERNAL API ORDER ===================
       const hasExternalId = product.external_id && String(product.external_id).trim() !== "";
       if (hasExternalId && orderMode === 'auto') {
-        if (!AHMINIX_TOKEN) {
-          return res.status(500).json({ error: "AHMINIX_API_TOKEN غير مضبوط في المتغيرات البيئية" });
+        const provider = await getProviderForProduct(productId);
+        if (!provider) {
+          return res.status(500).json({ error: "لم يتم تحديد مزود API لهذا المنتج أو المزود غير نشط. قم بتعيين مزود من لوحة التحكم." });
         }
 
         let playerId = "";
@@ -1544,16 +1652,14 @@ async function startServer() {
           ).toString().trim();
         }
 
-        // توليد UUID v4 فريد — نحفظه في outer scope
-        ahminixOrderUuid = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-          const r = Math.random() * 16 | 0;
-          return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
-        });
+        ahminixOrderUuid = generateUUIDv4();
         const qty = Math.max(1, Number(quantity) || 1);
 
-        console.log(`[API] Creating order: ext_id=${product.external_id}, qty=${qty}, playerId="${playerId}", uuid=${ahminixOrderUuid}`);
+        console.log(`[PROVIDER:${provider.name}] Creating order: ext_id=${product.external_id}, qty=${qty}, playerId="${playerId}", uuid=${ahminixOrderUuid}`);
 
-        const ahminixRes = await ahminixCreateOrder(
+        const ahminixRes = await providerCreateOrder(
+          provider.base_url,
+          provider.api_token,
           String(product.external_id).trim(),
           qty,
           playerId,
@@ -1563,7 +1669,7 @@ async function startServer() {
         if (!ahminixRes || ahminixRes.status !== "OK") {
           const errorCodes: Record<number, string> = {
             120: "رمز API مطلوب",
-            121: "خطأ في رمز API",
+            121: "خطأ في رمز API — تحقق من توكن المزود في لوحة التحكم",
             122: "غير مسموح باستخدام API",
             123: "عنوان IP غير مسموح به",
             130: "الموقع قيد الصيانة",
@@ -1577,13 +1683,13 @@ async function startServer() {
           };
           const code = ahminixRes?.code || ahminixRes?.error_code;
           const errMsg = (code && errorCodes[code]) || ahminixRes?.message || ahminixRes?.error || "فشل الطلب لدى المورد";
-          console.error("[API] Order failed:", JSON.stringify(ahminixRes));
+          console.error(`[PROVIDER:${provider.name}] Order failed:`, JSON.stringify(ahminixRes));
           return res.status(400).json({ error: `فشل الطلب: ${errMsg}`, details: ahminixRes });
         } else {
           ahminixOrderId   = String(ahminixRes.data?.order_id || ahminixOrderUuid);
           ahminixOrderStatus = ahminixRes.data?.status || "processing";
           ahminixReplayApi = normalizeReplayApi(ahminixRes.data?.replay_api);
-          console.log(`[API] Order created: id=${ahminixOrderId}, uuid=${ahminixOrderUuid}, status=${ahminixOrderStatus}, replay=${ahminixReplayApi.length}`);
+          console.log(`[PROVIDER:${provider.name}] Order created: id=${ahminixOrderId}, uuid=${ahminixOrderUuid}, status=${ahminixOrderStatus}, replay=${ahminixReplayApi.length}`);
         }
       }
       // ====================================================================
@@ -1603,11 +1709,15 @@ async function startServer() {
       // حفظ الطلب في قاعدة البيانات المحلية
       // cost_price: سعر التكلفة لحظة الشراء — يُحفظ هنا ليُستخدم في حساب الأرباح حتى لو تغيّر لاحقاً
       const snapshotCostPrice = parseFloat(String(product.price_per_unit || 0)) || 0;
+      // جلب provider_id من المنتج لحفظه في meta (يُستخدم لاحقاً في sync/check)
+      const providerIdForMeta = (product as any).provider_id || null;
+
       const metaData: any = {
         ...extraData,
         order_mode: orderMode,
         product_name: product.name,
         cost_price: snapshotCostPrice,
+        ...(providerIdForMeta ? { provider_id: providerIdForMeta } : {}),
         ...(ahminixOrderId ? {
           ahminix_order_id: ahminixOrderId,
           ahminix_order_uuid: ahminixOrderUuid || ahminixOrderId,
@@ -1684,7 +1794,6 @@ async function startServer() {
   // تتبع حالة طلب خارجي للمستخدم (بدون صلاحية أدمن)
   app.get("/api/orders/check-external/:orderId", authenticate, async (req, res) => {
     try {
-      if (!AHMINIX_TOKEN) return res.status(400).json({ error: "API غير مضبوط" });
       const orderId = req.params.orderId;
       const userId = (req as any).userId;
 
@@ -1710,15 +1819,27 @@ async function startServer() {
       const ahminixId   = meta.ahminix_order_id;
       const ahminixUuid = meta.ahminix_order_uuid;
 
+      // جلب المزود المرتبط بالطلب
+      const providerIdMeta = meta?.provider_id;
+      let providerForCheck: any = null;
+      if (providerIdMeta) {
+        providerForCheck = await getProvider(Number(providerIdMeta));
+      }
+      if (!providerForCheck) {
+        const { data: oi } = await supabase.from("order_items").select("product_id").eq("order_id", matchOrder.id).single();
+        if (oi?.product_id) providerForCheck = await getProviderForProduct(oi.product_id);
+      }
+      if (!providerForCheck) return res.status(500).json({ error: "لا يوجد مزود API مرتبط بهذا الطلب" });
+
       // دالة الجلب مع fallback UUID → numeric
       const doCheck = async () => {
         let r: any = null;
         if (ahminixUuid && ahminixUuid !== ahminixId) {
-          r = await ahminixCheckOrder(ahminixUuid, true);
+          r = await providerCheckOrder(providerForCheck.base_url, providerForCheck.api_token, ahminixUuid, true);
           if (r?.status !== "OK" || !r?.data?.[0]) r = null;
         }
         if (!r && ahminixId) {
-          r = await ahminixCheckOrder(ahminixId, String(ahminixId).includes("-"));
+          r = await providerCheckOrder(providerForCheck.base_url, providerForCheck.api_token, ahminixId, String(ahminixId).includes("-"));
         }
         return r;
       };
@@ -1811,63 +1932,126 @@ async function startServer() {
 
   // =================== AHMINIX ADMIN ENDPOINTS ===================
 
-  /**
-   * GET /api/admin/ahminix/profile
-   * يجلب رصيد ومعلومات حساب Ahminix
-   */
-  app.get("/api/admin/ahminix/profile", adminAuth, async (req, res) => {
+  // =================== PROVIDERS CRUD ENDPOINTS ===================
+
+  /** GET /api/admin/providers — قائمة المزودين (التوكن مخفي) */
+  app.get("/api/admin/providers", adminAuth, async (req, res) => {
     try {
-      if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط في .env" });
-      const data = await ahminixGetProfile();
+      const { data, error } = await supabase
+        .from("providers")
+        .select("id, name, base_url, is_active, created_at, notes")
+        .order("id");
+      if (error) throw error;
+      res.json(data || []);
+    } catch (e: any) { safeError(res, e); }
+  });
+
+  /** POST /api/admin/providers — إضافة مزود جديد */
+  app.post("/api/admin/providers", adminAuth, async (req, res) => {
+    try {
+      const { name, base_url, api_token, notes } = req.body;
+      if (!name || !base_url || !api_token) {
+        return res.status(400).json({ error: "name, base_url, api_token مطلوبة" });
+      }
+      if (!PROVIDER_ENCRYPTION_KEY) {
+        return res.status(500).json({ error: "PROVIDER_ENCRYPTION_KEY غير مضبوط في .env" });
+      }
+      const encrypted = encryptProviderData(api_token.trim());
+      const { data, error } = await supabase
+        .from("providers")
+        .insert({
+          name: name.trim(),
+          base_url: base_url.trim().replace(/[/]+$/, ""),
+          api_token_enc: encrypted,
+          notes: notes || null,
+          is_active: true
+        })
+        .select("id, name, base_url, is_active, created_at, notes")
+        .single();
+      if (error) throw error;
       res.json(data);
-    } catch (e: any) {
-      safeError(res, e);
-    }
+    } catch (e: any) { safeError(res, e); }
   });
 
-  /**
-   * GET /api/admin/ahminix/products
-   * يجلب كل المنتجات من Ahminix API
-   */
-  app.get("/api/admin/ahminix/products", adminAuth, async (req, res) => {
+  /** PATCH /api/admin/providers/:id — تعديل مزود */
+  app.patch("/api/admin/providers/:id", adminAuth, async (req, res) => {
     try {
-      if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط في .env" });
-      const products = await ahminixGetProducts();
-      res.json({ status: "OK", count: products.length, products });
-    } catch (e: any) {
-      safeError(res, e);
-    }
+      const id = Number(req.params.id);
+      if (!id) return res.status(400).json({ error: "id غير صحيح" });
+      const allowed = ["name", "base_url", "api_token", "notes", "is_active"];
+      const payload: any = {};
+      for (const k of allowed) {
+        if (req.body[k] !== undefined) {
+          if (k === "api_token") {
+            if (!PROVIDER_ENCRYPTION_KEY) return res.status(500).json({ error: "PROVIDER_ENCRYPTION_KEY غير مضبوط" });
+            payload["api_token_enc"] = encryptProviderData(String(req.body[k]).trim());
+          } else if (k === "base_url") {
+            payload[k] = String(req.body[k]).trim().replace(/[/]+$/, "");
+          } else {
+            payload[k] = req.body[k];
+          }
+        }
+      }
+      if (!Object.keys(payload).length) return res.status(400).json({ error: "لا توجد حقول للتحديث" });
+      invalidateProviderCache(id);
+      const { error } = await supabase.from("providers").update(payload).eq("id", id);
+      if (error) throw error;
+      res.json({ success: true });
+    } catch (e: any) { safeError(res, e); }
   });
 
-  /**
-   * POST /api/admin/ahminix/sync
-   * يزامن منتجات Ahminix إلى قاعدة البيانات المحلية
-   * Body: { subcategoryId, productIds?: number[], markupPercent?: number }
-   *   subcategoryId: القسم الفرعي الذي سيُضاف إليه المنتجات
-   *   productIds: قائمة بمعرفات Ahminix للمنتجات المراد استيرادها (اختياري - إذا فارغة يستورد الكل)
-   *   markupPercent: نسبة الربح تضاف على سعر Ahminix (افتراضي 0)
-   */
-  app.post("/api/admin/ahminix/sync", adminAuth, async (req, res) => {
+  /** DELETE /api/admin/providers/:id */
+  app.delete("/api/admin/providers/:id", adminAuth, async (req, res) => {
     try {
-      if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط في .env" });
+      const id = Number(req.params.id);
+      const { count } = await supabase
+        .from("products").select("id", { count: "exact", head: true }).eq("provider_id", id);
+      if (count && count > 0) {
+        return res.status(400).json({ error: `لا يمكن الحذف — يوجد ${count} منتج مرتبط بهذا المزود` });
+      }
+      invalidateProviderCache(id);
+      await supabase.from("providers").delete().eq("id", id);
+      res.json({ success: true });
+    } catch (e: any) { safeError(res, e); }
+  });
+
+  /** GET /api/admin/providers/:id/profile */
+  app.get("/api/admin/providers/:id/profile", adminAuth, async (req, res) => {
+    try {
+      const provider = await getProvider(Number(req.params.id));
+      if (!provider) return res.status(404).json({ error: "المزود غير موجود أو غير نشط" });
+      const data = await providerGetProfile(provider.base_url, provider.api_token);
+      res.json({ provider: provider.name, ...data });
+    } catch (e: any) { safeError(res, e); }
+  });
+
+  /** GET /api/admin/providers/:id/products */
+  app.get("/api/admin/providers/:id/products", adminAuth, async (req, res) => {
+    try {
+      const provider = await getProvider(Number(req.params.id));
+      if (!provider) return res.status(404).json({ error: "المزود غير موجود أو غير نشط" });
+      const products = await providerGetProducts(provider.base_url, provider.api_token);
+      res.json({ status: "OK", provider: provider.name, count: products.length, products });
+    } catch (e: any) { safeError(res, e); }
+  });
+
+  /** POST /api/admin/providers/:id/sync — مزامنة منتجات مزود */
+  app.post("/api/admin/providers/:id/sync", adminAuth, async (req, res) => {
+    try {
+      const providerId = Number(req.params.id);
+      const provider = await getProvider(providerId);
+      if (!provider) return res.status(404).json({ error: "المزود غير موجود أو غير نشط" });
 
       const { subcategoryId, subSubCategoryId, productIds, markupPercent = 0, productOverrides = [], globalImageUrl = "" } = req.body;
       if (!subcategoryId) return res.status(400).json({ error: "subcategoryId مطلوب" });
 
-      // بناء خريطة التخصيصات (سعر مخصص + صورة مخصصة لكل منتج)
       const overridesMap: Record<number, { price?: string; image_url?: string }> = {};
-      for (const o of productOverrides) {
-        if (o.id) overridesMap[o.id] = o;
-      }
+      for (const o of productOverrides) { if (o.id) overridesMap[o.id] = o; }
 
-      // جلب منتجات API
-      const ahminixProducts = await ahminixGetProducts();
-      if (!ahminixProducts.length) return res.status(400).json({ error: "لم يتم جلب أي منتجات" });
+      const allProducts = await providerGetProducts(provider.base_url, provider.api_token);
+      if (!allProducts.length) return res.status(400).json({ error: "لم يتم جلب أي منتجات من المزود" });
 
-      const toSync = productIds?.length
-        ? ahminixProducts.filter((p: any) => productIds.includes(p.id))
-        : ahminixProducts;
-
+      const toSync = productIds?.length ? allProducts.filter((p: any) => productIds.includes(p.id)) : allProducts;
       let added = 0, updated = 0, skipped = 0;
       const errors: string[] = [];
 
@@ -1875,70 +2059,151 @@ async function startServer() {
         try {
           const override = overridesMap[ap.id] || {};
           const basePrice = parseFloat(ap.price) || 0;
-
-          // السعر: مخصص يدوياً أو محسوب بنسبة الربح
           const finalPrice = override.price && parseFloat(override.price) > 0
             ? parseFloat(parseFloat(override.price).toFixed(6))
             : parseFloat((basePrice * (1 + markupPercent / 100)).toFixed(6));
 
-          const { data: existing } = await supabase
-            .from("products")
-            .select("id")
-            .eq("external_id", String(ap.id))
-            .maybeSingle();
+          const { data: existing } = await supabase.from("products").select("id")
+            .eq("external_id", String(ap.id)).eq("provider_id", providerId).maybeSingle();
 
           const productData: any = {
-            name: ap.name,
-            price: finalPrice,
-            price_per_unit: parseFloat(basePrice.toFixed(6)), // سعر التكلفة من API
+            name: ap.name, price: finalPrice,
+            price_per_unit: parseFloat(basePrice.toFixed(6)),
             description: ap.category_name || "",
             store_type: "external_api",
             requires_input: ap.params && ap.params.length > 0,
             available: ap.available !== false,
             external_id: String(ap.id),
+            provider_id: providerId,
             subcategory_id: subcategoryId,
-            sub_sub_category_id: subSubCategoryId ? subSubCategoryId : null,
+            sub_sub_category_id: subSubCategoryId || null,
             min_quantity: ap.qty_values?.min || 1,
             max_quantity: ap.qty_values?.max || null,
             image_url: override.image_url || globalImageUrl || ""
           };
 
           if (existing) {
-            const updateData: any = {
-              name: productData.name,
-              price: productData.price, // سعر البيع
-              price_per_unit: productData.price_per_unit, // سعر التكلفة
-              available: productData.available,
-              min_quantity: productData.min_quantity,
-              max_quantity: productData.max_quantity,
-              subcategory_id: subcategoryId,
-              sub_sub_category_id: subSubCategoryId ? subSubCategoryId : null
-            };
-            // تحديث الصورة إذا كانت مخصصة أو موحدة
-            if (override.image_url) updateData.image_url = override.image_url;
-            else if (globalImageUrl) updateData.image_url = globalImageUrl;
-            await supabase.from("products").update(updateData).eq("id", existing.id);
+            const upd: any = { name: productData.name, price: productData.price, price_per_unit: productData.price_per_unit, available: productData.available, min_quantity: productData.min_quantity, max_quantity: productData.max_quantity, provider_id: providerId, subcategory_id: subcategoryId, sub_sub_category_id: subSubCategoryId || null };
+            if (override.image_url) upd.image_url = override.image_url;
+            else if (globalImageUrl) upd.image_url = globalImageUrl;
+            await supabase.from("products").update(upd).eq("id", existing.id);
             updated++;
           } else {
-            // إضافة منتج جديد
             const { error: insErr } = await supabase.from("products").insert(productData);
             if (insErr) { errors.push(`${ap.name}: ${insErr.message}`); skipped++; }
             else added++;
           }
-        } catch (e: any) {
-          errors.push(`${ap.name}: ${e.message}`);
-          skipped++;
-        }
+        } catch (e: any) { errors.push(`${ap.name}: ${e.message}`); skipped++; }
       }
 
-      res.json({
-        status: "OK",
-        summary: { total: toSync.length, added, updated, skipped },
-        errors: errors.length ? errors : undefined
-      });
-    } catch (e: any) {
-      safeError(res, e);
-    }
+      res.json({ status: "OK", provider: provider.name, summary: { total: toSync.length, added, updated, skipped }, errors: errors.length ? errors : undefined });
+    } catch (e: any) { safeError(res, e); }
+  });
+
+  /** GET /api/admin/providers/:id/check-order/:orderId */
+  app.get("/api/admin/providers/:id/check-order/:orderId", adminAuth, async (req, res) => {
+    try {
+      const provider = await getProvider(Number(req.params.id));
+      if (!provider) return res.status(404).json({ error: "المزود غير موجود" });
+      const { uuid } = req.query;
+      const data = await providerCheckOrder(provider.base_url, provider.api_token, req.params.orderId, uuid === "1");
+      res.json(data);
+    } catch (e: any) { safeError(res, e); }
+  });
+
+  // ── Legacy /api/admin/ahminix/* — تعيد التوجيه لأول مزود نشط ──
+  app.get("/api/admin/ahminix/profile", adminAuth, async (req, res) => {
+    try {
+      const { data: first } = await supabase.from("providers").select("id").eq("is_active", true).order("id").limit(1).single();
+      if (!first) return res.status(404).json({ error: "لا يوجد مزود نشط. أضف مزوداً من إدارة المزودين." });
+      const provider = await getProvider(first.id);
+      if (!provider) return res.status(404).json({ error: "فشل جلب المزود" });
+      const data = await providerGetProfile(provider.base_url, provider.api_token);
+      res.json(data);
+    } catch (e: any) { safeError(res, e); }
+  });
+
+  /**
+   * GET /api/admin/ahminix/products — legacy، يجلب من أول مزود نشط
+   */
+  app.get("/api/admin/ahminix/products", adminAuth, async (req, res) => {
+    try {
+      const { data: first } = await supabase.from("providers").select("id").eq("is_active", true).order("id").limit(1).single();
+      if (!first) return res.status(404).json({ error: "لا يوجد مزود نشط" });
+      const provider = await getProvider(first.id);
+      if (!provider) return res.status(404).json({ error: "فشل جلب المزود" });
+      const products = await providerGetProducts(provider.base_url, provider.api_token);
+      res.json({ status: "OK", count: products.length, products });
+    } catch (e: any) { safeError(res, e); }
+  });
+
+  /**
+   * POST /api/admin/ahminix/sync — legacy، يُعيد التوجيه لأول مزود نشط
+   * الاستخدام الجديد: POST /api/admin/providers/:id/sync
+   */
+  app.post("/api/admin/ahminix/sync", adminAuth, async (req, res) => {
+    try {
+      const { data: first } = await supabase.from("providers").select("id").eq("is_active", true).order("id").limit(1).single();
+      if (!first) return res.status(404).json({ error: "لا يوجد مزود نشط. أضف مزوداً من إدارة المزودين أولاً." });
+      // إعادة التوجيه الداخلي
+      req.params = { ...req.params, id: String(first.id) };
+      // استدعاء منطق sync مباشرة
+      const providerId = first.id;
+      const provider = await getProvider(providerId);
+      if (!provider) return res.status(404).json({ error: "فشل جلب المزود" });
+
+      const { subcategoryId, subSubCategoryId, productIds, markupPercent = 0, productOverrides = [], globalImageUrl = "" } = req.body;
+      if (!subcategoryId) return res.status(400).json({ error: "subcategoryId مطلوب" });
+
+      const overridesMap: Record<number, any> = {};
+      for (const o of productOverrides) { if (o.id) overridesMap[o.id] = o; }
+
+      const allProducts = await providerGetProducts(provider.base_url, provider.api_token);
+      if (!allProducts.length) return res.status(400).json({ error: "لم يتم جلب أي منتجات" });
+
+      const toSync = productIds?.length ? allProducts.filter((p: any) => productIds.includes(p.id)) : allProducts;
+      let added = 0, updated = 0, skipped = 0;
+      const errors: string[] = [];
+
+      for (const ap of toSync) {
+        try {
+          const override = overridesMap[ap.id] || {};
+          const basePrice = parseFloat(ap.price) || 0;
+          const finalPrice = override.price && parseFloat(override.price) > 0
+            ? parseFloat(parseFloat(override.price).toFixed(6))
+            : parseFloat((basePrice * (1 + markupPercent / 100)).toFixed(6));
+
+          const { data: existing } = await supabase.from("products").select("id")
+            .eq("external_id", String(ap.id)).eq("provider_id", providerId).maybeSingle();
+
+          const productData: any = {
+            name: ap.name, price: finalPrice,
+            price_per_unit: parseFloat(basePrice.toFixed(6)),
+            description: ap.category_name || "", store_type: "external_api",
+            requires_input: ap.params && ap.params.length > 0,
+            available: ap.available !== false, external_id: String(ap.id),
+            provider_id: providerId, subcategory_id: subcategoryId,
+            sub_sub_category_id: subSubCategoryId || null,
+            min_quantity: ap.qty_values?.min || 1, max_quantity: ap.qty_values?.max || null,
+            image_url: override.image_url || globalImageUrl || ""
+          };
+
+          if (existing) {
+            const upd: any = { name: productData.name, price: productData.price, price_per_unit: productData.price_per_unit, available: productData.available, min_quantity: productData.min_quantity, max_quantity: productData.max_quantity, provider_id: providerId, subcategory_id: subcategoryId, sub_sub_category_id: subSubCategoryId || null };
+            if (override.image_url) upd.image_url = override.image_url;
+            else if (globalImageUrl) upd.image_url = globalImageUrl;
+            await supabase.from("products").update(upd).eq("id", existing.id);
+            updated++;
+          } else {
+            const { error: insErr } = await supabase.from("products").insert(productData);
+            if (insErr) { errors.push(`${ap.name}: ${insErr.message}`); skipped++; }
+            else added++;
+          }
+        } catch (e: any) { errors.push(`${ap.name}: ${e.message}`); skipped++; }
+      }
+
+      res.json({ status: "OK", provider: provider.name, summary: { total: toSync.length, added, updated, skipped }, errors: errors.length ? errors : undefined });
+    } catch (e: any) { safeError(res, e); }
   });
 
 
@@ -2047,15 +2312,22 @@ async function startServer() {
   });
 
   /**
-   * GET /api/admin/ahminix/check-order/:orderId
-   * يتحقق من حالة طلب خارجي في Ahminix
+   * GET /api/admin/ahminix/check-order/:orderId — legacy
+   * يتطلب query param: providerId=<id>  أو يبحث في meta الطلب
    */
   app.get("/api/admin/ahminix/check-order/:orderId", adminAuth, async (req, res) => {
     try {
-      if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط في .env" });
       const { orderId } = req.params;
-      const { uuid } = req.query;
-      const data = await ahminixCheckOrder(orderId, uuid === "1");
+      const { uuid, providerId } = req.query;
+      let provider: any = null;
+      if (providerId) {
+        provider = await getProvider(Number(providerId));
+      } else {
+        const { data: first } = await supabase.from("providers").select("id").eq("is_active", true).order("id").limit(1).single();
+        if (first) provider = await getProvider(first.id);
+      }
+      if (!provider) return res.status(404).json({ error: "لا يوجد مزود نشط. مرر providerId في الـ query." });
+      const data = await providerCheckOrder(provider.base_url, provider.api_token, orderId, uuid === "1");
       res.json(data);
     } catch (e: any) {
       safeError(res, e);
@@ -2064,11 +2336,10 @@ async function startServer() {
 
   /**
    * POST /api/admin/ahminix/sync-order/:orderId
-   * يُجبر تحديث طلب واحد من Ahminix بالـ DB order ID
+   * يُجبر تحديث طلب واحد من المزود بالـ DB order ID
    */
   app.post("/api/admin/ahminix/sync-order/:orderId", adminAuth, async (req, res) => {
     try {
-      if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط في .env" });
       const { data: order } = await supabase.from("orders").select("id, user_id, meta, status, total_amount").eq("id", req.params.orderId).single();
       if (!order) return res.status(404).json({ error: "الطلب غير موجود" });
       const meta = typeof order.meta === "string" ? JSON.parse(order.meta) : (order.meta || {});
@@ -2076,13 +2347,22 @@ async function startServer() {
       const ahminixUuid = meta?.ahminix_order_uuid;
       if (!ahminixId && !ahminixUuid) return res.status(400).json({ error: "الطلب ليس خارجياً" });
 
+      // جلب المزود من meta أو من المنتج
+      let syncProvider: any = null;
+      if (meta?.provider_id) syncProvider = await getProvider(Number(meta.provider_id));
+      if (!syncProvider) {
+        const { data: oi } = await supabase.from("order_items").select("product_id").eq("order_id", order.id).single();
+        if (oi?.product_id) syncProvider = await getProviderForProduct(oi.product_id);
+      }
+      if (!syncProvider) return res.status(500).json({ error: "لا يوجد مزود مرتبط بهذا الطلب" });
+
       const doCheck = async () => {
         let r: any = null;
         if (ahminixUuid && ahminixUuid !== String(ahminixId)) {
-          r = await ahminixCheckOrder(ahminixUuid, true);
+          r = await providerCheckOrder(syncProvider.base_url, syncProvider.api_token, ahminixUuid, true);
           if (r?.status !== "OK" || !r?.data?.[0]) r = null;
         }
-        if (!r && ahminixId) r = await ahminixCheckOrder(ahminixId, String(ahminixId).includes("-"));
+        if (!r && ahminixId) r = await providerCheckOrder(syncProvider.base_url, syncProvider.api_token, ahminixId, String(ahminixId).includes("-"));
         return r;
       };
 
@@ -2110,11 +2390,10 @@ async function startServer() {
 
   /**
    * POST /api/admin/ahminix/refresh-orders
-   * يحدّث حالة جميع الطلبات الخارجية المعلّقة (processing) من Ahminix
+   * يحدّث حالة جميع الطلبات الخارجية المعلّقة
    */
   app.post("/api/admin/ahminix/refresh-orders", adminAuth, async (req, res) => {
     try {
-      if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط في .env" });
 
       // جلب كل الطلبات الخارجية غير المكتملة
       const { data: pendingOrders, error: fetchErr } = await supabase
@@ -2142,13 +2421,22 @@ async function startServer() {
           const ahminixUuid = meta?.ahminix_order_uuid;
           if (!ahminixId) continue;
 
+          // جلب المزود المرتبط بالطلب
+          let loopProvider: any = null;
+          if (meta?.provider_id) loopProvider = await getProvider(Number(meta.provider_id));
+          if (!loopProvider) {
+            const { data: loopOi } = await supabase.from("order_items").select("product_id").eq("order_id", order.id).single();
+            if (loopOi?.product_id) loopProvider = await getProviderForProduct(loopOi.product_id);
+          }
+          if (!loopProvider) { results.push({ orderId: order.id, error: "لا يوجد مزود" }); continue; }
+
           const doCheck = async () => {
             let r: any = null;
             if (ahminixUuid && ahminixUuid !== String(ahminixId)) {
-              r = await ahminixCheckOrder(ahminixUuid, true);
+              r = await providerCheckOrder(loopProvider.base_url, loopProvider.api_token, ahminixUuid, true);
               if (r?.status !== "OK" || !r?.data?.[0]) r = null;
             }
-            if (!r) r = await ahminixCheckOrder(ahminixId, String(ahminixId).includes("-"));
+            if (!r) r = await providerCheckOrder(loopProvider.base_url, loopProvider.api_token, ahminixId, String(ahminixId).includes("-"));
             return r;
           };
 
@@ -2187,13 +2475,21 @@ async function startServer() {
   });
 
   /**
-   * GET /api/admin/ahminix/content/:categoryId
-   * يجلب فئة ومنتجاتها من Ahminix (0 = كل الفئات)
+   * GET /api/admin/ahminix/content/:categoryId — legacy
+   * يستخدم أول مزود نشط. الاستخدام الجديد: GET /api/admin/providers/:id/products
    */
   app.get("/api/admin/ahminix/content/:categoryId", adminAuth, async (req, res) => {
     try {
-      if (!AHMINIX_TOKEN) return res.status(400).json({ error: "AHMINIX_API_TOKEN غير مضبوط في .env" });
-      const data = await ahminixGet(`/content/${req.params.categoryId}`);
+      const { providerId } = req.query;
+      let provider: any = null;
+      if (providerId) {
+        provider = await getProvider(Number(providerId));
+      } else {
+        const { data: first } = await supabase.from("providers").select("id").eq("is_active", true).order("id").limit(1).single();
+        if (first) provider = await getProvider(first.id);
+      }
+      if (!provider) return res.status(404).json({ error: "لا يوجد مزود نشط" });
+      const data = await providerGet(provider.base_url, provider.api_token, `/content/${req.params.categoryId}`);
       res.json(data);
     } catch (e: any) {
       safeError(res, e);
@@ -3135,23 +3431,26 @@ ${responseText}`);
 
         const hasExtId = product?.external_id && String(product.external_id).trim() !== "";
 
-        console.log(`[ADMIN APPROVE] order=#${order.id} | ext_id=${product?.external_id} | hasExtId=${hasExtId} | store_type=${product?.store_type} | requires_input=${product?.requires_input} | playerId="${playerId}" | TOKEN=${!!AHMINIX_TOKEN}`);
+        console.log(`[ADMIN APPROVE] order=#${order.id} | ext_id=${product?.external_id} | hasExtId=${hasExtId} | store_type=${product?.store_type} | requires_input=${product?.requires_input} | playerId="${playerId}"`);
 
         if (hasExtId) {
-          if (!AHMINIX_TOKEN) {
-            return res.status(500).json({ error: "AHMINIX_API_TOKEN غير مضبوط في .env" });
+          // جلب المزود المرتبط بالمنتج ديناميكياً
+          const approveProvider = product?.provider_id
+            ? await getProvider(Number(product.provider_id))
+            : await getProviderForProduct(product?.id);
+
+          if (!approveProvider) {
+            return res.status(500).json({ error: "لم يتم تحديد مزود API لهذا المنتج. عيّن مزوداً من لوحة التحكم." });
           }
 
-          // --- نفس منطق qty و UUID من AUTO flow ---
           const qty = Math.max(1, Number(order.order_items?.[0]?.quantity) || 1);
-          const orderUuid = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-            const r = Math.random() * 16 | 0;
-            return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
-          });
+          const orderUuid = generateUUIDv4();
 
-          console.log(`[ADMIN APPROVE] Sending to API: ext_id=${product.external_id} | qty=${qty} | playerId="${playerId}" | uuid=${orderUuid}`);
+          console.log(`[ADMIN APPROVE][${approveProvider.name}] Sending: ext_id=${product.external_id} | qty=${qty} | playerId="${playerId}" | uuid=${orderUuid}`);
 
-          const apiRes = await ahminixCreateOrder(
+          const apiRes = await providerCreateOrder(
+            approveProvider.base_url,
+            approveProvider.api_token,
             String(product.external_id).trim(),
             qty,
             playerId,
@@ -3165,7 +3464,7 @@ ${responseText}`);
             // فشل API — نُرجع خطأ واضح للأدمن (نفس سلوك AUTO)
             const errorCodes: Record<number, string> = {
               120: "رمز API مطلوب",
-              121: "خطأ في رمز API — تحقق من AHMINIX_API_TOKEN",
+              121: "خطأ في رمز API — تحقق من توكن المزود في لوحة التحكم",
               122: "غير مسموح باستخدام API",
               123: "عنوان IP غير مسموح به",
               130: "الموقع قيد الصيانة",
@@ -4034,7 +4333,6 @@ ${responseText}`);
    * runAutoRefreshOrders — تجلب كل الطلبات غير المكتملة التي لها UUID وتحدّث حالتها
    */
   const runAutoRefreshOrders = async () => {
-    if (!AHMINIX_TOKEN) return;
     try {
       // جلب كل الطلبات التي ليست في حالة نهائية
       const { data: pendingOrders } = await supabase
@@ -4063,15 +4361,24 @@ ${responseText}`);
           const ahminixUuid = meta?.ahminix_order_uuid;
           if (!ahminixId && !ahminixUuid) continue;
 
+          // جلب المزود المرتبط
+          let autoProvider: any = null;
+          if (meta?.provider_id) autoProvider = await getProvider(Number(meta.provider_id));
+          if (!autoProvider) {
+            const { data: autoOi } = await supabase.from("order_items").select("product_id").eq("order_id", order.id).single();
+            if (autoOi?.product_id) autoProvider = await getProviderForProduct(autoOi.product_id);
+          }
+          if (!autoProvider) continue;
+
           // دالة الجلب مع fallback
           const doCheck = async () => {
             let r: any = null;
             if (ahminixUuid && ahminixUuid !== String(ahminixId)) {
-              r = await ahminixCheckOrder(ahminixUuid, true);
+              r = await providerCheckOrder(autoProvider.base_url, autoProvider.api_token, ahminixUuid, true);
               if (r?.status !== "OK" || !r?.data?.[0]) r = null;
             }
             if (!r && ahminixId) {
-              r = await ahminixCheckOrder(ahminixId, String(ahminixId).includes("-"));
+              r = await providerCheckOrder(autoProvider.base_url, autoProvider.api_token, ahminixId, String(ahminixId).includes("-"));
             }
             return r;
           };
@@ -4153,89 +4460,98 @@ ${responseText}`);
     }
   };
 
-  if (AHMINIX_TOKEN) {
-    // تشغيل فوري بعد 8 ثوانٍ من بدء السيرفر لتحديث كل الطلبات المعلقة
-    setTimeout(runAutoRefreshOrders, 8000);
-    // ثم كل دقيقتين باستمرار
-    setInterval(runAutoRefreshOrders, 2 * 60 * 1000);
-    console.log("[AUTO-REFRESH] Started - checking all pending UUID orders every 2 minutes + immediately on startup");
-  }
+  // AUTO-REFRESH يعمل دائماً — المزودين يُجلَبون ديناميكياً من DB
+  setTimeout(runAutoRefreshOrders, 8000);
+  setInterval(runAutoRefreshOrders, 2 * 60 * 1000);
+  console.log("[AUTO-REFRESH] Started — checking pending orders every 2 minutes");
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 
-  // =================== AUTO PRODUCT SYNC (كل ساعة) ===================
+  // =================== AUTO PRODUCT SYNC — كل المزودين النشطين ===================
   const autoSyncProducts = async () => {
-    if (!AHMINIX_TOKEN) return;
     try {
-      console.log("[AUTO-SYNC] بدء مزامنة المنتجات من API...");
-      const apiProducts = await ahminixGetProducts();
-      if (!apiProducts.length) { console.log("[AUTO-SYNC] لا منتجات من API"); return; }
+      // جلب كل المزودين النشطين
+      const { data: activeProviders } = await supabase
+        .from("providers")
+        .select("id, name")
+        .eq("is_active", true);
 
-      // جلب كل منتجات external_api من قاعدة البيانات (نجلب price_per_unit لمقارنتها مع API)
+      if (!activeProviders?.length) return;
+
+      // جلب كل منتجات external_api من قاعدة البيانات مع provider_id
       const { data: dbProducts } = await supabase
         .from("products")
-        .select("id, external_id, available, name, price_per_unit")
+        .select("id, external_id, available, name, price_per_unit, provider_id")
         .eq("store_type", "external_api")
-        .not("external_id", "is", null);
+        .not("external_id", "is", null)
+        .not("provider_id", "is", null);
 
-      const apiMap = new Map<string, any>();
-      for (const p of apiProducts) apiMap.set(String(p.id), p);
+      let totalUpdated = 0, totalUnavailable = 0, totalRestored = 0;
 
-      let updated = 0, markedUnavailable = 0, restored = 0, deleted = 0;
+      for (const prov of activeProviders) {
+        try {
+          const provider = await getProvider(prov.id);
+          if (!provider) continue;
 
-      for (const dbProd of (dbProducts || [])) {
-        const extId = String(dbProd.external_id);
-        const apiProd = apiMap.get(extId);
+          console.log(`[AUTO-SYNC] مزامنة ${provider.name}...`);
+          const apiProducts = await providerGetProducts(provider.base_url, provider.api_token);
+          if (!apiProducts.length) continue;
 
-        if (!apiProd) {
-          // المنتج اختفى تماماً من API → ضعه رمادياً (available = false) بدل الحذف
-          if (dbProd.available) {
-            await supabase.from("products").update({ available: false }).eq("id", dbProd.id);
-            markedUnavailable++;
+          const apiMap = new Map<string, any>();
+          for (const p of apiProducts) apiMap.set(String(p.id), p);
+
+          const providerDbProds = (dbProducts || []).filter((d: any) => String(d.provider_id) === String(prov.id));
+
+          for (const dbProd of providerDbProds) {
+            const extId = String(dbProd.external_id);
+            const apiProd = apiMap.get(extId);
+
+            if (!apiProd) {
+              if (dbProd.available) {
+                await supabase.from("products").update({ available: false }).eq("id", dbProd.id);
+                totalUnavailable++;
+              }
+              continue;
+            }
+
+            const apiAvailable = apiProd.available !== false;
+            const apiCostPrice = parseFloat(String(apiProd.price || 0)) || 0;
+            const dbCostPrice = parseFloat(String(dbProd.price_per_unit || 0)) || 0;
+            const priceChanged = apiCostPrice > 0 && Math.abs(apiCostPrice - dbCostPrice) > 0.000001;
+
+            if (!apiAvailable && dbProd.available) {
+              await supabase.from("products")
+                .update({ available: false, name: apiProd.name, ...(apiCostPrice > 0 ? { price_per_unit: apiCostPrice } : {}) })
+                .eq("id", dbProd.id);
+              totalUnavailable++;
+            } else if (apiAvailable && !dbProd.available) {
+              await supabase.from("products")
+                .update({ available: true, name: apiProd.name, ...(apiCostPrice > 0 ? { price_per_unit: apiCostPrice } : {}) })
+                .eq("id", dbProd.id);
+              totalRestored++;
+            } else if (apiAvailable && (dbProd.name !== apiProd.name || priceChanged)) {
+              await supabase.from("products")
+                .update({ name: apiProd.name, ...(apiCostPrice > 0 ? { price_per_unit: apiCostPrice } : {}) })
+                .eq("id", dbProd.id);
+              totalUpdated++;
+            }
           }
-          continue;
-        }
-
-        const apiAvailable = apiProd.available !== false;
-
-        // سعر التكلفة من API (للمقارنة وتحديثه في قاعدة البيانات)
-        const apiCostPrice = parseFloat(String(apiProd.price || 0)) || 0;
-        const dbCostPrice = parseFloat(String(dbProd.price_per_unit || 0)) || 0;
-        const priceChanged = apiCostPrice > 0 && Math.abs(apiCostPrice - dbCostPrice) > 0.000001;
-
-        if (!apiAvailable && dbProd.available) {
-          // أصبح غير متوفر → ضعه رمادياً (available = false) بدل الحذف
-          await supabase.from("products")
-            .update({ available: false, name: apiProd.name, ...(apiCostPrice > 0 ? { price_per_unit: apiCostPrice } : {}) })
-            .eq("id", dbProd.id);
-          markedUnavailable++;
-        } else if (apiAvailable && !dbProd.available) {
-          // عاد متوفراً → أعد تفعيله
-          await supabase.from("products")
-            .update({ available: true, name: apiProd.name, ...(apiCostPrice > 0 ? { price_per_unit: apiCostPrice } : {}) })
-            .eq("id", dbProd.id);
-          restored++;
-        } else if (apiAvailable && (dbProd.name !== apiProd.name || priceChanged)) {
-          // تحديث الاسم و/أو سعر التكلفة إذا تغيّرا
-          await supabase.from("products")
-            .update({ name: apiProd.name, ...(apiCostPrice > 0 ? { price_per_unit: apiCostPrice } : {}) })
-            .eq("id", dbProd.id);
-          updated++;
+        } catch (e: any) {
+          console.error(`[AUTO-SYNC] خطأ في مزود ${prov.name}:`, e.message);
         }
       }
 
-      console.log(`[AUTO-SYNC] اكتملت: تحديث=${updated}, تعطيل=${markedUnavailable}, استعادة=${restored}`);
+      console.log(`[AUTO-SYNC] اكتملت: تحديث=${totalUpdated}, تعطيل=${totalUnavailable}, استعادة=${totalRestored}`);
     } catch (e: any) {
       console.error("[AUTO-SYNC] خطأ:", e.message);
     }
   };
 
-  // تشغيل فوري بعد 10 ثوانٍ ثم كل ساعة
   setTimeout(autoSyncProducts, 10000);
   setInterval(autoSyncProducts, 5 * 60 * 1000);
-  console.log("[AUTO-SYNC] مجدول — كل 5 دقائق");
+  console.log("[AUTO-SYNC] مجدول — كل 5 دقائق (جميع المزودين النشطين)");
 
   // =================== TELEGRAM BOTS ===================
   startBots();
