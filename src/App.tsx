@@ -1058,7 +1058,10 @@ export default function App() {
     fetchBanners();
     fetchOffers();
     fetchSiteSettings();
-    fetchSypRate();
+    fetchSypRate(); // جلب السعر المحفوظ في DB فوراً
+    fetchAndStoreSypRateFromBrowser(); // جلب السعر الحي من المتصفح وحفظه في DB
+    // تحديث السعر الحي كل 30 دقيقة من المتصفح
+    const sypRateInterval = setInterval(fetchAndStoreSypRateFromBrowser, 30 * 60 * 1000);
     const savedUserId = localStorage.getItem("userId");
     if (savedUserId && !isNaN(Number(savedUserId))) {
       fetchUser(Number(savedUserId));
@@ -1139,6 +1142,7 @@ export default function App() {
         setView({ type: "admin_login" });
       }
     }
+    return () => clearInterval(sypRateInterval);
   }, []);
 
   useEffect(() => {
@@ -1413,16 +1417,43 @@ export default function App() {
 
   const fetchSypRate = async () => {
     try {
+      // أولاً: جلب السعر المحفوظ في قاعدة البيانات لعرضه فوراً
       const res = await fetch("/api/syp-rate");
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.rate && !isNaN(data.rate)) {
-        setSypRate(data.rate);
-        localStorage.setItem("sypRate", String(data.rate));
-        const now = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
-        setSypRateUpdatedAt(now);
-        localStorage.setItem("sypRateUpdatedAt", now);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.rate && !isNaN(data.rate)) {
+          setSypRate(data.rate);
+          localStorage.setItem("sypRate", String(data.rate));
+          const now = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+          setSypRateUpdatedAt(now);
+          localStorage.setItem("sypRateUpdatedAt", now);
+        }
       }
+    } catch (e) { /* silent */ }
+  };
+
+  // جلب السعر الحي من المتصفح مباشرة (يتجاوز حجب السيرفر) وحفظه في قاعدة البيانات
+  const fetchAndStoreSypRateFromBrowser = async () => {
+    try {
+      const res = await fetch("https://sse.sp-today.com/snapshot");
+      if (!res.ok) return;
+      const json = await res.json();
+      const buyRaw = json?.data?.currencies?.["USD:damascus"]?.buy;
+      if (!buyRaw || isNaN(Number(buyRaw))) return;
+      // نقسم على 100 (نحذف صفرين)
+      const rate = parseFloat((Number(buyRaw) / 100).toFixed(2));
+      if (rate <= 0) return;
+      setSypRate(rate);
+      localStorage.setItem("sypRate", String(rate));
+      const now = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+      setSypRateUpdatedAt(now);
+      localStorage.setItem("sypRateUpdatedAt", now);
+      // حفظ السعر في قاعدة البيانات عبر السيرفر
+      await fetch("/api/syp-rate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rate }),
+      });
     } catch (e) { /* silent */ }
   };
 
