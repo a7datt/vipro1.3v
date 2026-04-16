@@ -4466,33 +4466,35 @@ ${responseText}`);
   setInterval(runAutoRefreshOrders, 2 * 60 * 1000);
   console.log("[AUTO-REFRESH] Started — checking pending orders every 2 minutes");
 
-  // =================== SYP EXCHANGE RATE — جلب سعر صرف الليرة السورية ===================
-  const fetchAndStoreSypRate = async () => {
-    try {
-      const res = await fetch("https://sse.sp-today.com/snapshot");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      const buyRaw = json?.data?.currencies?.["USD:damascus"]?.buy;
-      if (!buyRaw || isNaN(Number(buyRaw))) throw new Error("Invalid buy value");
-      // نقسم على 100 قبل التخزين (نحذف صفرين)
-      const rate = parseFloat((Number(buyRaw) / 100).toFixed(2));
-      await supabase.from("settings").upsert({ key: "syp_rate", value: String(rate) }, { onConflict: "key" });
-      console.log(`[SYP-RATE] Updated: 1$ = ${rate} ل.س (raw buy: ${buyRaw})`);
-    } catch (e: any) {
-      console.error("[SYP-RATE] Failed to fetch rate:", e?.message || e);
-    }
-  };
+  // =================== SYP EXCHANGE RATE — سعر صرف الليرة السورية ===================
+  // ملاحظة: تم تعطيل جلب السعر من السيرفر لأن sse.sp-today.com يحجب طلبات datacenter IPs
+  // الحل: الواجهة (frontend) تجلب السعر مباشرة من المتصفح وترسله للسيرفر عبر POST /api/syp-rate
 
-  // جلب فوري عند البدء ثم كل 60 دقيقة
-  setTimeout(fetchAndStoreSypRate, 5000);
-  setInterval(fetchAndStoreSypRate, 10 * 60 * 1000);
-
-  // API لجلب سعر الصرف الحالي
+  // API لجلب سعر الصرف الحالي من قاعدة البيانات
   app.get("/api/syp-rate", async (req, res) => {
     try {
       const { data } = await supabase.from("settings").select("value").eq("key", "syp_rate").single();
       const rate = data?.value ? parseFloat(data.value) : null;
       res.json({ rate: rate || null });
+    } catch (e: any) {
+      safeError(res, e);
+    }
+  });
+
+  // API لاستقبال سعر الصرف من الواجهة وحفظه في قاعدة البيانات
+  app.post("/api/syp-rate", async (req, res) => {
+    try {
+      const { rate } = req.body;
+      if (!rate || isNaN(Number(rate)) || Number(rate) <= 0) {
+        return res.status(400).json({ error: "Invalid rate value" });
+      }
+      const parsedRate = parseFloat(Number(rate).toFixed(2));
+      await supabase.from("settings").upsert(
+        { key: "syp_rate", value: String(parsedRate) },
+        { onConflict: "key" }
+      );
+      console.log(`[SYP-RATE] Updated from frontend: 1$ = ${parsedRate} ل.س`);
+      res.json({ ok: true, rate: parsedRate });
     } catch (e: any) {
       safeError(res, e);
     }
