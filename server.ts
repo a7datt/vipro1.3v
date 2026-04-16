@@ -4485,7 +4485,7 @@ ${responseText}`);
 
   // جلب فوري عند البدء ثم كل 60 دقيقة
   setTimeout(fetchAndStoreSypRate, 5000);
-  setInterval(fetchAndStoreSypRate, 60 * 60 * 1000);
+  setInterval(fetchAndStoreSypRate, 10 * 60 * 1000);
 
   // API لجلب سعر الصرف الحالي
   app.get("/api/syp-rate", async (req, res) => {
