@@ -715,6 +715,12 @@ export default function App() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [siteSettings, setSiteSettings] = useState<any[]>([]);
   const [isDarkMode, setIsDarkMode] = useState(localStorage.getItem("theme") === "dark");
+  // ── Currency state ──
+  const [currency, setCurrency] = useState<"USD"|"SYP">(() => (localStorage.getItem("currency") as any) || "USD");
+  const [sypRate, setSypRate] = useState<number>(() => {
+    const stored = localStorage.getItem("sypRate");
+    return stored ? parseFloat(stored) : 133.5;
+  });
   const [voucherCode, setVoucherCode] = useState("");
   // ── Wallet charge form states (رُفعت هنا لمنع ضياع البيانات عند إعادة الرسم) ──
   // wallet state moved inside WalletChargeView for keyboard stability
@@ -1050,6 +1056,7 @@ export default function App() {
     fetchBanners();
     fetchOffers();
     fetchSiteSettings();
+    fetchSypRate();
     const savedUserId = localStorage.getItem("userId");
     if (savedUserId && !isNaN(Number(savedUserId))) {
       fetchUser(Number(savedUserId));
@@ -1402,6 +1409,18 @@ export default function App() {
     } catch (e) { console.error("Fetch settings error:", e); }
   };
 
+  const fetchSypRate = async () => {
+    try {
+      const res = await fetch("/api/syp-rate");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.rate && !isNaN(data.rate)) {
+        setSypRate(data.rate);
+        localStorage.setItem("sypRate", String(data.rate));
+      }
+    } catch (e) { /* silent */ }
+  };
+
   const fetchCategories = async () => {
     try {
       const res = await fetch("/api/categories");
@@ -1637,6 +1656,14 @@ export default function App() {
   };
 
   const theme = getTheme();
+
+  // دالة تنسيق السعر حسب العملة المختارة
+  const fmtPrice = (usd: number, decimals?: number) => {
+    if (currency === "SYP") {
+      return `${Math.round(usd * sypRate).toLocaleString("ar-SY")} ل.س`;
+    }
+    return `${usd.toFixed(decimals !== undefined ? decimals : 2)} $`;
+  };
 
   // --- UI Components ---
 
@@ -1901,6 +1928,30 @@ export default function App() {
 
             {/* ===== قائمة العناصر ===== */}
             <div className="flex-1 overflow-y-auto py-2">
+
+              {/* ===== زر تبديل العملة ===== */}
+              <div className="px-4 pt-3 pb-1">
+                <button
+                  onClick={() => {
+                    const next = currency === "USD" ? "SYP" : "USD";
+                    setCurrency(next);
+                    localStorage.setItem("currency", next);
+                  }}
+                  className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl font-bold text-sm shadow-sm transition-all active:scale-95"
+                  style={{ background: "linear-gradient(135deg, #c9a84c, #f5d485, #c9a84c)", color: "#4a2e00" }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">💱</span>
+                    <span>العملة</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white/40 px-3 py-1 rounded-lg">
+                    <span className="font-black">{currency === "USD" ? "$ دولار" : "ل.س ليرة"}</span>
+                    {currency === "SYP" && <span className="text-[9px] opacity-80">{sypRate} ل.س/$</span>}
+                    <span className="text-[10px] opacity-70">اضغط</span>
+                  </div>
+                </button>
+              </div>
+
 
               {user && (
                 <>
@@ -2225,7 +2276,7 @@ export default function App() {
                 </div>
                 <div className="w-full px-1 py-1.5">
                   <p className="font-bold text-gray-700 text-[10px] text-center leading-tight truncate">{prod.name}</p>
-                  <p className={`${theme.text} text-[10px] text-center font-bold`}>{parseFloat(prod.price || 0).toFixed(2)}$</p>
+                  <p className={`${theme.text} text-[10px] text-center font-bold`}>{fmtPrice(parseFloat(prod.price || 0))}</p>
                   <p className="text-gray-400 text-[9px] text-center">🛒 تم شراؤه {prod.purchase_count} {prod.purchase_count === 1 ? "مرة" : "مرات"}</p>
                 </div>
               </motion.div>
@@ -2514,8 +2565,8 @@ export default function App() {
                       <h4 className="font-bold text-gray-800">{prod.name}</h4>
                       <p className={`${theme.text} font-bold`}>
                         {prod.store_type === 'quantities'
-                          ? `${(parseFloat(prod.price_per_unit as any) || 0).toFixed(6)} $ / وحدة`
-                          : `${(parseFloat(prod.price as any) || 0).toFixed(2)} $`}
+                          ? fmtPrice(parseFloat(prod.price_per_unit as any) || 0, 6) + " / وحدة"
+                          : fmtPrice(parseFloat(prod.price as any) || 0)}
                       </p>
                     </div>
                   </div>
@@ -2644,8 +2695,8 @@ export default function App() {
                   )}
                   <p className={`${isUnavailable ? "text-gray-400" : theme.text} font-bold text-sm mt-1`}>
                     {isQuantity
-                      ? `${(parseFloat(prod.price_per_unit) || 0).toFixed(6)} $ / وحدة`
-                      : `${(parseFloat(prod.price) || 0).toFixed(2)} $`}
+                      ? fmtPrice(parseFloat(prod.price_per_unit) || 0, 6) + " / وحدة"
+                      : fmtPrice(parseFloat(prod.price) || 0)}
                   </p>
                 </div>
 
@@ -2749,8 +2800,8 @@ export default function App() {
           <div className="text-center space-y-2">
             <h4 className="font-bold text-lg text-gray-800">{prod.name}</h4>
             <div className="flex flex-col items-center">
-              {user?.is_vip && <p className="text-gray-400 line-through text-sm">{prod.price.toFixed(2)} $</p>}
-              <p className={`${theme.text} font-bold text-xl`}>{finalPrice.toFixed(2)} $</p>
+              {user?.is_vip && <p className="text-gray-400 line-through text-sm">{fmtPrice(prod.price)}</p>}
+              <p className={`${theme.text} font-bold text-xl`}>{fmtPrice(finalPrice)}</p>
               {user?.is_vip && <span className="text-[10px] bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full font-bold mt-1">خصم VIP {siteSettings?.find((s:any)=>s.key==="vip_discount")?.value || "5"}%</span>}
             </div>
           </div>
@@ -2769,7 +2820,7 @@ export default function App() {
 
             <div className="bg-gray-50 p-4 rounded-xl text-center">
               <p className="text-xs text-gray-500 mb-1">السعر الإجمالي</p>
-              <p className="text-xl font-bold text-gray-800">{finalPrice.toFixed(2)} $</p>
+              <p className="text-xl font-bold text-gray-800">{fmtPrice(finalPrice)}</p>
             </div>
 
             {error && <p className="text-red-500 text-sm text-center font-medium">{error}</p>}
@@ -2946,7 +2997,7 @@ export default function App() {
           })()}
 
           <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-gray-500">المبلغ المدفوع</span><span className="font-bold text-[var(--brand)]">{finalPrice.toFixed(2)} $</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">المبلغ المدفوع</span><span className="font-bold text-[var(--brand)]">{fmtPrice(finalPrice)}</span></div>
             {orderResult.externalOrderId && <div className="flex justify-between"><span className="text-gray-500">رقم الطلب الخارجي</span><span className="font-bold text-gray-700 text-xs">{orderResult.externalOrderId}</span></div>}
           </div>
 
@@ -2985,8 +3036,8 @@ export default function App() {
             <div className="flex-1">
               <h4 className="font-bold text-gray-800">{prod.name}</h4>
               <div className="flex items-center gap-2 flex-wrap">
-                {user?.is_vip && <p className="text-gray-400 line-through text-xs">{unitPrice.toFixed(2)} $</p>}
-                <p className={`${theme.text} font-bold`}>{unitPrice.toFixed(2)} $</p>
+                {user?.is_vip && <p className="text-gray-400 line-through text-xs">{fmtPrice(unitPrice)}</p>}
+                <p className={`${theme.text} font-bold`}>{fmtPrice(unitPrice)}</p>
                 {user?.is_vip && <span className="text-[10px] bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full font-bold">VIP</span>}
                 {prod.store_type === 'external_api' && (
                   <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold flex items-center gap-0.5">
@@ -3065,7 +3116,7 @@ export default function App() {
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">سعر الوحدة</span>
               <span className="font-bold">
-                {(prod.store_type === 'quantities' || prod.store_type === 'external_api') ? unitPrice.toFixed(6) : unitPrice.toFixed(2)} $
+                {(prod.store_type === 'quantities' || prod.store_type === 'external_api') ? fmtPrice(unitPrice, 6) : fmtPrice(unitPrice)}
               </span>
             </div>
             <div className="flex justify-between text-sm">
@@ -3074,7 +3125,7 @@ export default function App() {
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">المجموع الفرعي</span>
-              <span className="font-bold">{baseTotal.toFixed(2)} $</span>
+              <span className="font-bold">{fmtPrice(baseTotal)}</span>
             </div>
             {user?.is_vip && (
               <div className="flex justify-between text-sm text-amber-600 bg-amber-50 p-2 rounded-lg border border-amber-100">
@@ -3082,13 +3133,13 @@ export default function App() {
                   <Star size={14} fill="currentColor" />
                   <span>خصم VIP ({siteSettings?.find((s:any)=>s.key==="vip_discount")?.value || "5"}%)</span>
                 </div>
-                <span className="font-bold">- {(baseTotal * 0.05).toFixed(2)} $</span>
+                <span className="font-bold">- {fmtPrice(baseTotal * 0.05)}</span>
               </div>
             )}
             <div className="flex justify-between text-lg border-t border-gray-100 pt-3 mt-2">
               <span className="font-bold text-gray-800">المبلغ النهائي</span>
               <div className="text-left">
-                <span className={`font-bold ${theme.text} text-xl`}>{finalPrice.toFixed(2)} $</span>
+                <span className={`font-bold ${theme.text} text-xl`}>{fmtPrice(finalPrice)}</span>
                 <p className="text-[10px] text-gray-400">شامل جميع الرسوم</p>
               </div>
             </div>
@@ -5712,6 +5763,24 @@ export default function App() {
             className="w-10 h-5 bg-brand rounded-full relative"
           >
             <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
+          </button>
+        </div>
+        {/* تبديل العملة */}
+        <div className="p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-lg">💱</span>
+            <span className="font-medium text-gray-700">عملة العرض</span>
+          </div>
+          <button
+            onClick={() => {
+              const next = currency === "USD" ? "SYP" : "USD";
+              setCurrency(next);
+              localStorage.setItem("currency", next);
+            }}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold text-xs shadow-sm transition-all active:scale-95"
+            style={{ background: "linear-gradient(135deg, #c9a84c, #f5d485)", color: "#4a2e00" }}
+          >
+            {currency === "USD" ? "$ دولار" : "ل.س ليرة"}
           </button>
         </div>
         {/* الوضع الليلي */}
