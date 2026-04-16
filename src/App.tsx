@@ -1843,8 +1843,8 @@ export default function App() {
   };
 
   const Drawer = () => {
-    const whatsappLink1 = siteSettings?.find((s: any) => s.key === "support_whatsapp")?.value || "https://chat.whatsapp.com/GKzgMvEJBe77r69G7ngPUr";
-    const whatsappLink = `https://wa.me/${siteSettings?.find((s: any) => s.key === "support_whatsapp")?.value || ""}`;
+    const whatsappLink = siteSettings?.find((s: any) => s.key === "support_whatsapp")?.value || "https://chat.whatsapp.com/DELXtdEh9ua5edFTupESNU";
+
     return (
     <AnimatePresence>
       {isDrawerOpen && (
@@ -1927,18 +1927,6 @@ export default function App() {
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
                     </span>
                     <span className="font-medium text-sm">دعم واتساب</span>
-                  </button>
-                  
-                  
-                                    {/* واتساب */}
-                  <button
-                    onClick={() => { window.open(whatsappLink1, "_blank"); setIsDrawerOpen(false); }}
-                    className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors ${isDarkMode ? "hover:bg-zinc-800" : "hover:bg-gray-50"}`}
-                  >
-                    <span className="text-green-500">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                    </span>
-                    <span className="font-medium text-sm">مجتمع وتس اخبار الموقع</span>
                   </button>
 
                   <DrawerItem icon={<Shield size={18} />}     label="سياسة الخصوصية" onClick={() => { setActiveTab("profile"); setView({ type: "privacy_policy" }); setIsDrawerOpen(false); }} />
@@ -5820,356 +5808,699 @@ export default function App() {
     );
   };
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // AdminProvidersTab — إدارة المزودين الخارجيين (متعدد المزودين + تشفير)
+  // ─────────────────────────────────────────────────────────────────────────
   const AdminAhminixTab = ({ categories, subcategories, subSubCategories, fetchCategories, fetchSubcategories, fetchSubSubCategories }: any) => {
-    const [ahminixProfile, setAhminixProfile] = useState<any>(null);
+
+    // ── State: قائمة المزودين ──────────────────────────────────────────────
+    const [providers, setProviders] = useState<any[]>([]);
+    const [loadingProviders, setLoadingProviders] = useState(false);
+
+    // ── State: نموذج إضافة / تعديل مزود ─────────────────────────────────
+    const [showProviderForm, setShowProviderForm] = useState(false);
+    const [editingProvider, setEditingProvider] = useState<any>(null); // null = إضافة جديد
+    const [providerFormData, setProviderFormData] = useState({ name: "", base_url: "", api_token: "", notes: "" });
+    const [savingProvider, setSavingProvider] = useState(false);
+    const [deletingId, setDeletingId] = useState<number | null>(null);
+
+    // ── State: المزود المختار للعمل ────────────────────────────────────────
+    const [selectedProviderId, setSelectedProviderId] = useState<number | null>(null);
+    const selectedProvider = providers.find(p => p.id === selectedProviderId) || null;
+
+    // ── State: معلومات الحساب ─────────────────────────────────────────────
+    const [providerProfile, setProviderProfile] = useState<any>(null);
     const [loadingProfile, setLoadingProfile] = useState(false);
-    const [ahminixProducts, setAhminixProducts] = useState<any[]>([]);
+
+    // ── State: منتجات المزود ─────────────────────────────────────────────
+    const [providerProducts, setProviderProducts] = useState<any[]>([]);
     const [productsFetched, setProductsFetched] = useState(false);
     const [loadingProducts, setLoadingProducts] = useState(false);
     const [selectedProducts, setSelectedProducts] = useState<number[]>([]);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [categoryFilter, setCategoryFilter] = useState("");
+
+    // ── State: مزامنة المنتجات ────────────────────────────────────────────
     const [targetSubcategoryId, setTargetSubcategoryId] = useState("");
     const [targetSubSubCategoryId, setTargetSubSubCategoryId] = useState("");
     const [markupPercent, setMarkupPercent] = useState(0);
     const [globalImageUrl, setGlobalImageUrl] = useState("");
     const [syncLoading, setSyncLoading] = useState(false);
     const [syncResult, setSyncResult] = useState<any>(null);
-    const [searchQuery, setSearchQuery] = useState("");
-    const [categoryFilter, setCategoryFilter] = useState("");
-    const [localSubcats, setLocalSubcats] = useState<any[]>([]);
-    const [localSubSubs, setLocalSubSubs] = useState<any[]>([]);
+
+    // ── State: تحديث الطلبات ──────────────────────────────────────────────
     const [refreshLoading, setRefreshLoading] = useState(false);
     const [refreshResult, setRefreshResult] = useState<any>(null);
+
+    // ── State: فحص طلب ───────────────────────────────────────────────────
     const [checkOrderId, setCheckOrderId] = useState("");
     const [checkLoading, setCheckLoading] = useState(false);
     const [checkResult, setCheckResult] = useState<any>(null);
 
+    // ── State: الأقسام المحلية ────────────────────────────────────────────
+    const [localSubcats, setLocalSubcats] = useState<any[]>([]);
+    const [localSubSubs, setLocalSubSubs] = useState<any[]>([]);
+
+    // ── State: التبويب النشط ──────────────────────────────────────────────
+    const [activeTab, setActiveTab] = useState<"providers"|"products"|"orders">("providers");
+
     useEffect(() => {
+      fetchProviders();
       fetch("/api/subcategories").then(r=>r.json()).then(setLocalSubcats).catch(()=>{});
       fetch("/api/sub-sub-categories").then(r=>r.json()).then(setLocalSubSubs).catch(()=>{});
     }, []);
 
-    const loadProfile = async () => { setLoadingProfile(true); try { const res = await adminFetch("/api/admin/ahminix/profile", { headers: { "x-admin-token": localStorage.getItem("adminToken") || "" } }); setAhminixProfile(await res.json()); } catch(e:any) { setAhminixProfile({error:e.message}); } setLoadingProfile(false); };
-    const loadProducts = async () => { setLoadingProducts(true); setProductsFetched(false); setSelectedProducts([]); setSyncResult(null); try { const res = await adminFetch("/api/admin/ahminix/products", { headers: { "x-admin-token": localStorage.getItem("adminToken") || "" } }); const data = await res.json(); setAhminixProducts(data.products || (Array.isArray(data)?data:[])); setProductsFetched(true); } catch { setAhminixProducts([]); setProductsFetched(true); } setLoadingProducts(false); };
-    const handleRefreshOrders = async () => { setRefreshLoading(true); setRefreshResult(null); try { const res = await adminFetch("/api/admin/ahminix/refresh-orders",{method:"POST"}); setRefreshResult(await res.json()); } catch(e:any){setRefreshResult({error:e.message});} setRefreshLoading(false); };
+    // عند تغيير المزود المختار — نصفر الحالات المرتبطة به
+    useEffect(() => {
+      setProviderProfile(null);
+      setProviderProducts([]);
+      setProductsFetched(false);
+      setSelectedProducts([]);
+      setSyncResult(null);
+      setCheckResult(null);
+    }, [selectedProviderId]);
+
+    // ── جلب قائمة المزودين ───────────────────────────────────────────────
+    const fetchProviders = async () => {
+      setLoadingProviders(true);
+      try {
+        const res = await adminFetch("/api/admin/providers");
+        const data = await res.json();
+        setProviders(Array.isArray(data) ? data : []);
+      } catch { setProviders([]); }
+      setLoadingProviders(false);
+    };
+
+    // ── حفظ مزود (إضافة أو تعديل) ──────────────────────────────────────
+    const handleSaveProvider = async () => {
+      if (!providerFormData.name.trim() || !providerFormData.base_url.trim()) {
+        showToast("الاسم ورابط API مطلوبان", "error"); return;
+      }
+      if (!editingProvider && !providerFormData.api_token.trim()) {
+        showToast("التوكن مطلوب عند الإضافة", "error"); return;
+      }
+      setSavingProvider(true);
+      try {
+        const body: any = {
+          name: providerFormData.name.trim(),
+          base_url: providerFormData.base_url.trim(),
+          notes: providerFormData.notes.trim() || undefined,
+        };
+        if (providerFormData.api_token.trim()) body.api_token = providerFormData.api_token.trim();
+
+        if (editingProvider) {
+          await adminFetch(`/api/admin/providers/${editingProvider.id}`, {
+            method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+          });
+          showToast("تم تحديث المزود", "success");
+        } else {
+          await adminFetch("/api/admin/providers", {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+          });
+          showToast("تم إضافة المزود", "success");
+        }
+        setShowProviderForm(false);
+        setEditingProvider(null);
+        setProviderFormData({ name: "", base_url: "", api_token: "", notes: "" });
+        fetchProviders();
+      } catch (e: any) {
+        showToast(e.message || "حدث خطأ", "error");
+      }
+      setSavingProvider(false);
+    };
+
+    // ── حذف مزود ──────────────────────────────────────────────────────────
+    const handleDeleteProvider = async (id: number) => {
+      if (!confirm("هل أنت متأكد من حذف هذا المزود؟ لا يمكن حذفه إن كان يملك منتجات مرتبطة.")) return;
+      setDeletingId(id);
+      try {
+        const res = await adminFetch(`/api/admin/providers/${id}`, { method: "DELETE" });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.error || "فشل الحذف", "error"); }
+        else { showToast("تم حذف المزود", "success"); if (selectedProviderId === id) setSelectedProviderId(null); fetchProviders(); }
+      } catch (e: any) { showToast(e.message, "error"); }
+      setDeletingId(null);
+    };
+
+    // ── تبديل حالة المزود (نشط/معطل) ─────────────────────────────────────
+    const handleToggleProvider = async (id: number, current: boolean) => {
+      try {
+        await adminFetch(`/api/admin/providers/${id}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ is_active: !current })
+        });
+        fetchProviders();
+      } catch (e: any) { showToast(e.message, "error"); }
+    };
+
+    // ── جلب بيانات حساب المزود ────────────────────────────────────────────
+    const loadProviderProfile = async () => {
+      if (!selectedProviderId) return;
+      setLoadingProfile(true);
+      try {
+        const res = await adminFetch(`/api/admin/providers/${selectedProviderId}/profile`);
+        setProviderProfile(await res.json());
+      } catch (e: any) { setProviderProfile({ error: e.message }); }
+      setLoadingProfile(false);
+    };
+
+    // ── جلب منتجات المزود ─────────────────────────────────────────────────
+    const loadProviderProducts = async () => {
+      if (!selectedProviderId) return;
+      setLoadingProducts(true); setProductsFetched(false); setSelectedProducts([]); setSyncResult(null);
+      try {
+        const res = await adminFetch(`/api/admin/providers/${selectedProviderId}/products`);
+        const data = await res.json();
+        setProviderProducts(data.products || (Array.isArray(data) ? data : []));
+        setProductsFetched(true);
+      } catch { setProviderProducts([]); setProductsFetched(true); }
+      setLoadingProducts(false);
+    };
+
+    // ── مزامنة المنتجات ────────────────────────────────────────────────────
+    const handleSync = async () => {
+      if (!targetSubcategoryId) { showToast("اختر القسم الفرعي أولاً", "info"); return; }
+      if (!selectedProviderId) { showToast("اختر مزوداً أولاً", "info"); return; }
+      setSyncLoading(true); setSyncResult(null);
+      try {
+        const res = await adminFetch(`/api/admin/providers/${selectedProviderId}/sync`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            subcategoryId: parseInt(targetSubcategoryId),
+            subSubCategoryId: targetSubSubCategoryId ? parseInt(targetSubSubCategoryId) : undefined,
+            productIds: selectedProducts.length ? selectedProducts : undefined,
+            markupPercent, globalImageUrl: globalImageUrl || undefined
+          })
+        });
+        setSyncResult(await res.json());
+      } catch (e: any) { setSyncResult({ error: e.message }); }
+      setSyncLoading(false);
+    };
+
+    // ── تحديث الطلبات ─────────────────────────────────────────────────────
+    const handleRefreshOrders = async () => {
+      setRefreshLoading(true); setRefreshResult(null);
+      try {
+        const res = await adminFetch("/api/admin/ahminix/refresh-orders", { method: "POST" });
+        setRefreshResult(await res.json());
+      } catch (e: any) { setRefreshResult({ error: e.message }); }
+      setRefreshLoading(false);
+    };
+
+    // ── فحص طلب ───────────────────────────────────────────────────────────
     const handleCheckOrder = async () => {
       if (!checkOrderId.trim()) return;
-      setCheckLoading(true);
-      setCheckResult(null);
+      if (!selectedProviderId) { showToast("اختر مزوداً أولاً", "info"); return; }
+      setCheckLoading(true); setCheckResult(null);
       try {
         const raw = checkOrderId.trim();
         const isUuid = raw.includes("-");
-        const normalizedId = (!isUuid && !raw.startsWith("ID_")) ? `ID_${raw}` : raw;
-        const res = await adminFetch(`/api/admin/ahminix/check-order/${encodeURIComponent(normalizedId)}${isUuid ? "?uuid=1" : ""}`);
+        const res = await adminFetch(`/api/admin/providers/${selectedProviderId}/check-order/${encodeURIComponent(raw)}${isUuid ? "?uuid=1" : ""}`);
         setCheckResult(await res.json());
-      } catch(e: any) {
-        setCheckResult({ error: e.message });
-      }
+      } catch (e: any) { setCheckResult({ error: e.message }); }
       setCheckLoading(false);
     };
-    const toggleProduct = (id: number) => setSelectedProducts(prev => prev.includes(id)?prev.filter(p=>p!==id):[...prev,id]);
 
-    const filteredProducts = ahminixProducts.filter(p => (!searchQuery||p.name?.toLowerCase().includes(searchQuery.toLowerCase())) && (!categoryFilter||p.category_name===categoryFilter));
-    const uniqueCategories = [...new Set(ahminixProducts.map((p:any) => p.category_name).filter(Boolean))];
+    const toggleProduct = (id: number) =>
+      setSelectedProducts(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
+
+    const filteredProducts = providerProducts.filter(p =>
+      (!searchQuery || p.name?.toLowerCase().includes(searchQuery.toLowerCase())) &&
+      (!categoryFilter || p.category_name === categoryFilter)
+    );
+    const uniqueCategories = [...new Set(providerProducts.map((p: any) => p.category_name).filter(Boolean))];
 
     return (
-      <div className="space-y-6 pb-8">
+      <div className="space-y-5 pb-8">
+
+        {/* ── Header ─────────────────────────────────────────────────────── */}
         <div className="bg-gradient-to-r from-[var(--brand)] to-[var(--brand-dark)] p-6 rounded-2xl text-white">
-          <div className="flex items-center gap-3 mb-2"><ExternalLink size={24}/><h2 className="text-xl font-bold">إدارة API الخارجي</h2></div>
-          <p className="text-white/80 text-sm">استيراد المنتجات وإدارة الحساب الخارجي</p>
-        </div>
-
-        {/* رصيد الحساب */}
-        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-gray-800 flex items-center gap-2"><Wallet size={18} className="text-[var(--brand)]"/>حساب API الخارجي</h3>
-            <button onClick={loadProfile} disabled={loadingProfile} className="bg-[var(--brand)] text-white px-4 py-2 rounded-xl text-xs font-bold disabled:opacity-50 flex items-center gap-1"><RefreshCw size={12} className={loadingProfile?"animate-spin":""}/>{loadingProfile?"جاري...":"تحديث"}</button>
+          <div className="flex items-center gap-3 mb-2">
+            <ExternalLink size={24}/>
+            <h2 className="text-xl font-bold">إدارة المزودين الخارجيين</h2>
           </div>
-          {ahminixProfile ? (
-            ahminixProfile.error ? <p className="text-red-500 text-sm">{ahminixProfile.error}</p> : (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gray-50 p-4 rounded-xl text-center"><p className="text-[10px] text-gray-400 mb-1">البريد الإلكتروني</p><p className="font-bold text-gray-800 text-sm">{ahminixProfile.email||"—"}</p></div>
-                <div className="bg-green-50 p-4 rounded-xl text-center"><p className="text-[10px] text-gray-400 mb-1">الرصيد</p><p className="font-bold text-green-700 text-lg">{parseFloat(ahminixProfile.balance||0).toFixed(3)} $</p></div>
-              </div>
-            )
-          ) : <p className="text-gray-400 text-sm text-center py-4">اضغط "تحديث" لعرض معلومات الحساب</p>}
+          <p className="text-white/80 text-sm">ربط مزودي API المتعددين — التوكنات مشفرة بـ AES-256</p>
         </div>
 
-        {/* تحديث الطلبات */}
-        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
-          <h3 className="font-bold text-gray-800 flex items-center gap-2"><RefreshCw size={18} className="text-[var(--brand)]"/>تحديث حالة الطلبات</h3>
-          <p className="text-xs text-gray-500">يفحص الطلبات بحالة "processing" ويحدّثها تلقائياً</p>
-          <button onClick={handleRefreshOrders} disabled={refreshLoading} className="w-full bg-[var(--brand)] text-white py-3 rounded-xl font-bold disabled:opacity-50 flex items-center justify-center gap-2"><RefreshCw size={16} className={refreshLoading?"animate-spin":""}/>{refreshLoading?"جاري التحديث...":"تحديث الطلبات"}</button>
-          {refreshResult && <div className={`p-4 rounded-xl text-sm font-medium ${refreshResult.error?'bg-red-50 text-red-700':'bg-green-50 text-green-700'}`}>{refreshResult.error?`خطأ: ${refreshResult.error}`:`تم تحديث ${refreshResult.updated} طلب`}</div>}
+        {/* ── Tabs ───────────────────────────────────────────────────────── */}
+        <div className="flex bg-gray-100 rounded-2xl p-1 gap-1">
+          {([
+            { key: "providers", label: "المزودون", icon: "🔌" },
+            { key: "products",  label: "المنتجات",  icon: "📦" },
+            { key: "orders",    label: "الطلبات",   icon: "🔄" },
+          ] as const).map(t => (
+            <button key={t.key} onClick={() => setActiveTab(t.key)}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all ${activeTab === t.key ? "bg-white text-[var(--brand)] shadow-sm" : "text-gray-500"}`}>
+              {t.icon} {t.label}
+            </button>
+          ))}
         </div>
 
-        {/* فحص طلب */}
-        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
-          <h3 className="font-bold text-gray-800 flex items-center gap-2"><Search size={18} className="text-[var(--brand)]"/>فحص طلب</h3>
-          <div className="flex gap-2">
-            <input type="text" placeholder="ID الطلب أو UUID" value={checkOrderId} onChange={e => setCheckOrderId(e.target.value)} className="flex-1 bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none border border-gray-100"/>
-            <button onClick={handleCheckOrder} disabled={checkLoading} className="bg-[var(--brand)] text-white px-4 py-3 rounded-xl font-bold text-sm disabled:opacity-50">{checkLoading?"...":"فحص"}</button>
-          </div>
-          {checkResult && (
-            <div className="bg-gray-50 p-4 rounded-xl">
-              {checkResult.error ? (
-                <p className="text-red-500 text-sm">{checkResult.error}</p>
-              ) : checkResult.data?.[0] ? (() => {
-                const d = checkResult.data[0];
-                const replayCodes: string[] = (() => {
-                  if (!d.replay_api) return [];
-                  const arr = Array.isArray(d.replay_api) ? d.replay_api : [d.replay_api];
-                  return arr.filter(Boolean).map((x: any) => {
-                    if (typeof x === "string") return x;
-                    if (typeof x === "number") return String(x);
-                    if (typeof x === "object") {
-                      const v = x.replay ?? x.code ?? x.value ?? x.key ?? x.data ?? null;
-                      return v !== null ? String(v) : JSON.stringify(x);
-                    }
-                    return String(x);
-                  });
-                })();
-                const statusLabel = d.status === "accept" ? "مقبول" : d.status === "reject" ? "مرفوض" : "قيد المعالجة";
-                const statusColor = d.status === "accept" ? "text-green-700 bg-green-100" : d.status === "reject" ? "text-red-700 bg-red-100" : "text-amber-700 bg-amber-100";
-                let responseTime: string | null = null;
-                if (d.created_at && d.accepted_at) {
-                  try {
-                    const diff = Math.round((new Date(d.accepted_at).getTime() - new Date(d.created_at).getTime()) / 60000);
-                    responseTime = diff > 0 ? `${diff} دقيقة` : "أقل من دقيقة";
-                  } catch {}
-                }
-                return (
-                  <div className="space-y-3">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-200 pb-2">تفاصيل الطلب</p>
-                    {d.order_id !== undefined && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-500 text-sm">رقم العملية</span>
-                        <span className="font-bold text-gray-800 text-sm">{d.order_id}</span>
-                      </div>
-                    )}
-                    {d.product_name && (
-                      <div className="flex justify-between items-start gap-2">
-                        <span className="text-gray-500 text-sm shrink-0">المنتج</span>
-                        <span className="font-bold text-gray-800 text-xs text-left">{d.product_name}</span>
-                      </div>
-                    )}
-                    {d.qty !== undefined && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-500 text-sm">الكمية</span>
-                        <span className="font-bold text-gray-800 text-sm">{d.qty}</span>
-                      </div>
-                    )}
-                    {d.price !== undefined && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-500 text-sm">السعر الإجمالي</span>
-                        <span className="font-bold text-gray-800 text-sm">{parseFloat(String(d.price)).toFixed(5)} $</span>
-                      </div>
-                    )}
-                    {d.created_at && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-500 text-sm">التاريخ</span>
-                        <span className="font-bold text-gray-800 text-xs">{d.created_at}</span>
-                      </div>
-                    )}
-                    {d.player_id && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-500 text-sm">playerId</span>
-                        <span className="font-bold text-gray-800 text-xs font-mono">{d.player_id}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-500 text-sm">الحالة</span>
-                      <span className={`font-bold text-sm px-3 py-1 rounded-full ${statusColor}`}>{statusLabel}</span>
-                    </div>
-                    {responseTime && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-500 text-sm">مدة الاستجابة</span>
-                        <span className="font-bold text-gray-800 text-sm">{responseTime}</span>
-                      </div>
-                    )}
-                    {replayCodes.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-gray-500 text-sm font-semibold">الرد</p>
-                        <div className="bg-white p-3 rounded-xl border border-gray-200">
-                          <p className="text-xs text-gray-800 font-mono break-all leading-relaxed whitespace-pre-wrap">{replayCodes.join("\n")}</p>
-                        </div>
-                      </div>
-                    )}
+        {/* ══════════════════════════════════════════════════════════════════
+            TAB 1: المزودون
+        ══════════════════════════════════════════════════════════════════ */}
+        {activeTab === "providers" && (
+          <div className="space-y-4">
+
+            {/* زر إضافة مزود */}
+            <button onClick={() => { setEditingProvider(null); setProviderFormData({ name: "", base_url: "", api_token: "", notes: "" }); setShowProviderForm(true); }}
+              className="w-full bg-[var(--brand)] text-white py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm">
+              <Plus size={18}/> إضافة مزود جديد
+            </button>
+
+            {/* نموذج إضافة / تعديل */}
+            {showProviderForm && (
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-lg overflow-hidden">
+                <div className="bg-gradient-to-r from-gray-800 to-gray-700 px-5 py-4 flex items-center justify-between">
+                  <h3 className="text-white font-bold text-sm flex items-center gap-2">
+                    {editingProvider ? <><Pencil size={15}/> تعديل المزود</> : <><Plus size={15}/> مزود جديد</>}
+                  </h3>
+                  <button onClick={() => { setShowProviderForm(false); setEditingProvider(null); }} className="text-white/70 hover:text-white">
+                    <X size={18}/>
+                  </button>
+                </div>
+                <div className="p-5 space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-gray-600 mb-1.5 block">الاسم <span className="text-red-400">*</span></label>
+                    <input type="text" placeholder="مثال: FastCard" value={providerFormData.name}
+                      onChange={e => setProviderFormData(p => ({ ...p, name: e.target.value }))}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[var(--brand)] transition-colors"/>
                   </div>
-                );
-              })() : <p className="text-gray-500 text-sm text-center">لم يتم العثور على الطلب</p>}
-            </div>
-          )}
-        </div>
-
-        {/* استيراد المنتجات */}
-        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-gray-800 flex items-center gap-2"><Download size={18} className="text-[var(--brand)]"/>استيراد المنتجات</h3>
-            <button onClick={loadProducts} disabled={loadingProducts} className="bg-[var(--brand)] text-white px-4 py-2 rounded-xl text-xs font-bold disabled:opacity-50 flex items-center gap-1"><RefreshCw size={12} className={loadingProducts?"animate-spin":""}/>{loadingProducts?"جاري الجلب...":"جلب المنتجات"}</button>
-          </div>
-
-          {/* التصنيف */}
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">القسم الفرعي <span className="text-red-400">*</span></label>
-              <select value={targetSubcategoryId} onChange={e => { setTargetSubcategoryId(e.target.value); setTargetSubSubCategoryId(""); }} className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm outline-none focus:border-[var(--brand)]">
-                <option value="">-- اختر القسم الفرعي --</option>
-                {localSubcats.map((s:any) => <option key={s.id} value={s.id}>{s.name} (#{s.id})</option>)}
-              </select>
-            </div>
-            {targetSubcategoryId && localSubSubs.filter((ss:any) => String(ss.subcategory_id)===String(targetSubcategoryId)).length > 0 && (
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">فرع فرعي <span className="text-gray-300">(اختياري)</span></label>
-                <select value={targetSubSubCategoryId} onChange={e => setTargetSubSubCategoryId(e.target.value)} className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm outline-none">
-                  <option value="">-- بدون فرع فرعي --</option>
-                  {localSubSubs.filter((ss:any) => String(ss.subcategory_id)===String(targetSubcategoryId)).map((ss:any) => <option key={ss.id} value={ss.id}>{ss.name} (#{ss.id})</option>)}
-                </select>
+                  <div>
+                    <label className="text-xs font-bold text-gray-600 mb-1.5 block">رابط API Base URL <span className="text-red-400">*</span></label>
+                    <input type="url" placeholder="https://example.com/client/api" value={providerFormData.base_url}
+                      onChange={e => setProviderFormData(p => ({ ...p, base_url: e.target.value }))}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[var(--brand)] transition-colors font-mono text-xs" dir="ltr"/>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-600 mb-1.5 block">
+                      API Token {editingProvider ? <span className="text-gray-400 font-normal">(اتركه فارغاً للإبقاء على الحالي)</span> : <span className="text-red-400">*</span>}
+                    </label>
+                    <input type="password" placeholder={editingProvider ? "••••••• (لم يتغير)" : "أدخل التوكن — يُشفَّر تلقائياً"} value={providerFormData.api_token}
+                      onChange={e => setProviderFormData(p => ({ ...p, api_token: e.target.value }))}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[var(--brand)] transition-colors font-mono" dir="ltr"/>
+                    <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">🔒 مشفر بـ AES-256-GCM — لا يظهر في أي مكان بعد الحفظ</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-600 mb-1.5 block">ملاحظات <span className="text-gray-400 font-normal">(اختياري)</span></label>
+                    <input type="text" placeholder="مثال: مزود ألعاب" value={providerFormData.notes}
+                      onChange={e => setProviderFormData(p => ({ ...p, notes: e.target.value }))}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[var(--brand)] transition-colors"/>
+                  </div>
+                  <div className="flex gap-3 pt-1">
+                    <button onClick={() => { setShowProviderForm(false); setEditingProvider(null); }}
+                      className="flex-1 bg-gray-100 text-gray-600 py-3 rounded-xl font-bold text-sm">إلغاء</button>
+                    <button onClick={handleSaveProvider} disabled={savingProvider}
+                      className="flex-1 bg-[var(--brand)] text-white py-3 rounded-xl font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+                      {savingProvider ? <><RefreshCw size={14} className="animate-spin"/> جاري...</> : <><CheckCircle size={14}/> {editingProvider ? "حفظ التعديلات" : "إضافة المزود"}</>}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">نسبة الربح %</label>
-              <input type="number" min={0} max={500} value={markupPercent} onChange={e => setMarkupPercent(parseFloat(e.target.value)||0)} className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm outline-none" placeholder="0 = بدون هامش"/>
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">صورة موحدة لكل المنتجات <span className="text-gray-300">(اختياري)</span></label>
-              <div className="flex gap-2">
-                <input type="text" value={globalImageUrl} onChange={e => setGlobalImageUrl(e.target.value)} className="flex-1 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm outline-none" placeholder="https://... رابط الصورة"/>
-                <label className="bg-gray-100 text-gray-600 px-3 py-3 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1 whitespace-nowrap hover:bg-gray-200 transition-colors">
-                  <Upload size={14}/>
-                  رفع
-                  <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    try {
-                      const formData = new FormData();
-                      formData.append("image", file);
-                      const imgbbKey = (import.meta as any).env.VITE_IMGBB_API_KEY || "97ffbf56fe1a203445531d664cd4b928";
-                      const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, { method: "POST", body: formData });
-                      const data = await res.json();
-                      if (data.success) setGlobalImageUrl(data.data.url);
-                      else showToast("فشل رفع الصورة", 'error');
-                    } catch { showToast("خطأ في رفع الصورة", 'error'); }
-                  }}/>
-                </label>
+
+            {/* قائمة المزودين */}
+            {loadingProviders ? (
+              <div className="flex items-center justify-center py-10 gap-3">
+                <RefreshCw size={20} className="animate-spin text-[var(--brand)]"/>
+                <span className="text-sm text-gray-500">جاري التحميل...</span>
               </div>
-              {globalImageUrl && (
-                <div className="mt-2 flex items-center gap-2">
-                  <img loading="lazy" src={globalImageUrl} className="w-12 h-12 object-cover rounded-lg border border-gray-100" referrerPolicy="no-referrer"/>
-                  <button onClick={() => setGlobalImageUrl("")} className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded-lg">حذف</button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* قائمة المنتجات */}
-          {loadingProducts && (
-            <div className="flex items-center justify-center py-8 gap-3">
-              <RefreshCw size={20} className="animate-spin text-[var(--brand)]"/>
-              <span className="text-sm text-gray-500">جاري جلب المنتجات...</span>
-            </div>
-          )}
-
-          {!loadingProducts && ahminixProducts.length > 0 && (
-            <div className="space-y-3 border-t border-gray-100 pt-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold text-gray-600">المنتجات ({ahminixProducts.length})</p>
-                <div className="flex gap-2">
-                  <button onClick={() => setSelectedProducts(filteredProducts.map((p:any)=>p.id))} className="text-xs text-brand font-bold">تحديد الكل</button>
-                  <span className="text-gray-300">|</span>
-                  <button onClick={() => setSelectedProducts([])} className="text-xs text-gray-400 font-bold">إلغاء الكل</button>
-                </div>
+            ) : providers.length === 0 ? (
+              <div className="bg-gray-50 rounded-2xl p-8 text-center border border-dashed border-gray-200">
+                <ExternalLink size={36} className="mx-auto mb-3 text-gray-300"/>
+                <p className="font-bold text-gray-500 text-sm mb-1">لا يوجد مزودون</p>
+                <p className="text-xs text-gray-400">أضف مزوداً للبدء في استيراد المنتجات</p>
               </div>
-
-              {/* بحث وفلتر */}
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Search size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"/>
-                  <input type="text" placeholder="بحث في المنتجات..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-gray-50 border border-gray-100 rounded-xl pr-8 pl-3 py-2 text-xs outline-none"/>
-                </div>
-                <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="bg-gray-50 border border-gray-100 rounded-xl px-2 py-2 text-xs outline-none max-w-[100px]">
-                  <option value="">الكل</option>
-                  {uniqueCategories.map((c:any) => <option key={String(c)} value={String(c)}>{String(c)}</option>)}
-                </select>
-              </div>
-
-              {selectedProducts.length > 0 && (
-                <div className="bg-brand-light text-brand text-xs font-bold px-3 py-2 rounded-xl">
-                  تم تحديد {selectedProducts.length} منتج
-                </div>
-              )}
-
-              {/* قائمة المنتجات */}
-              <div className="space-y-2 max-h-72 overflow-y-auto rounded-xl border border-gray-100">
-                {filteredProducts.length === 0 ? (
-                  <div className="text-center py-6 text-gray-400 text-xs">لا توجد منتجات مطابقة</div>
-                ) : filteredProducts.map((p:any) => (
-                  <div key={p.id} onClick={() => toggleProduct(p.id)}
-                    className={`flex items-center gap-3 p-3 cursor-pointer transition-all ${selectedProducts.includes(p.id)?'bg-red-50 border-r-2 border-[var(--brand)]':'bg-white hover:bg-gray-50'}`}>
-                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all ${selectedProducts.includes(p.id)?'border-[var(--brand)] bg-[var(--brand)]':'border-gray-300'}`}>
-                      {selectedProducts.includes(p.id) && <CheckCircle size={12} className="text-white"/>}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-gray-800 truncate">{p.name}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] text-gray-400">{p.category_name}</span>
-                        <span className="text-[10px] font-bold text-[var(--brand)]">{p.price} $</span>
-                        {p.id && <span className="text-[9px] text-gray-300">#{p.id}</span>}
+            ) : (
+              <div className="space-y-3">
+                {providers.map(prov => (
+                  <div key={prov.id}
+                    className={`bg-white rounded-2xl border-2 transition-all overflow-hidden ${selectedProviderId === prov.id ? "border-[var(--brand)] shadow-md" : "border-gray-100"}`}>
+                    {/* رأس البطاقة */}
+                    <div className="p-4 flex items-center gap-3 cursor-pointer" onClick={() => setSelectedProviderId(selectedProviderId === prov.id ? null : prov.id)}>
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg font-bold ${prov.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"}`}>
+                        {prov.name[0]?.toUpperCase()}
                       </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-gray-800 text-sm truncate">{prov.name}</p>
+                          <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${prov.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                            {prov.is_active ? "نشط" : "معطل"}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 font-mono truncate mt-0.5">{prov.base_url}</p>
+                        {prov.notes && <p className="text-[10px] text-gray-400 mt-0.5 italic">{prov.notes}</p>}
+                      </div>
+                      <ChevronDown size={16} className={`text-gray-400 transition-transform flex-shrink-0 ${selectedProviderId === prov.id ? "rotate-180" : ""}`}/>
                     </div>
+
+                    {/* أزرار الإجراءات */}
+                    {selectedProviderId === prov.id && (
+                      <div className="px-4 pb-4 space-y-3 border-t border-gray-50 pt-3">
+                        {/* أزرار الإجراءات */}
+                        <div className="grid grid-cols-4 gap-2">
+                          <button onClick={() => { setActiveTab("products"); }}
+                            className="bg-blue-50 text-blue-700 py-2.5 rounded-xl text-[10px] font-bold flex flex-col items-center gap-1">
+                            <Download size={14}/> استيراد
+                          </button>
+                          <button onClick={loadProviderProfile} disabled={loadingProfile}
+                            className="bg-green-50 text-green-700 py-2.5 rounded-xl text-[10px] font-bold flex flex-col items-center gap-1 disabled:opacity-50">
+                            <Wallet size={14}/> الرصيد
+                          </button>
+                          <button onClick={() => { setEditingProvider(prov); setProviderFormData({ name: prov.name, base_url: prov.base_url, api_token: "", notes: prov.notes || "" }); setShowProviderForm(true); }}
+                            className="bg-amber-50 text-amber-700 py-2.5 rounded-xl text-[10px] font-bold flex flex-col items-center gap-1">
+                            <Pencil size={14}/> تعديل
+                          </button>
+                          <button onClick={() => handleDeleteProvider(prov.id)} disabled={deletingId === prov.id}
+                            className="bg-red-50 text-red-600 py-2.5 rounded-xl text-[10px] font-bold flex flex-col items-center gap-1 disabled:opacity-50">
+                            <Trash2 size={14}/> حذف
+                          </button>
+                        </div>
+
+                        {/* زر تبديل الحالة */}
+                        <button onClick={() => handleToggleProvider(prov.id, prov.is_active)}
+                          className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all ${prov.is_active ? "bg-gray-100 text-gray-600 hover:bg-red-50 hover:text-red-600" : "bg-green-50 text-green-700"}`}>
+                          {prov.is_active ? "⏸ تعطيل المزود" : "▶ تفعيل المزود"}
+                        </button>
+
+                        {/* بيانات الحساب */}
+                        {providerProfile && (
+                          providerProfile.error ? (
+                            <div className="bg-red-50 p-3 rounded-xl text-red-600 text-xs">{providerProfile.error}</div>
+                          ) : (
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="bg-gray-50 p-3 rounded-xl text-center">
+                                <p className="text-[9px] text-gray-400 mb-1">البريد الإلكتروني</p>
+                                <p className="font-bold text-gray-800 text-xs truncate">{providerProfile.email || "—"}</p>
+                              </div>
+                              <div className="bg-green-50 p-3 rounded-xl text-center">
+                                <p className="text-[9px] text-gray-400 mb-1">الرصيد</p>
+                                <p className="font-bold text-green-700 text-base">{parseFloat(providerProfile.balance || 0).toFixed(3)} $</p>
+                              </div>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
+        )}
 
-          {!loadingProducts && productsFetched && ahminixProducts.length === 0 && (
-            <div className="text-center py-6 bg-red-50 rounded-xl border border-red-100">
-              <Download size={32} className="mx-auto mb-2 text-red-300"/>
-              <p className="text-xs text-red-600 font-bold">لم يتم العثور على منتجات</p>
-              <p className="text-[10px] text-red-400 mt-1">تحقق من إعدادات API أو حاول مرة أخرى</p>
-            </div>
-          )}
+        {/* ══════════════════════════════════════════════════════════════════
+            TAB 2: المنتجات — استيراد ومزامنة
+        ══════════════════════════════════════════════════════════════════ */}
+        {activeTab === "products" && (
+          <div className="space-y-4">
 
-          {!loadingProducts && !productsFetched && ahminixProducts.length === 0 && (
-            <div className="text-center py-6 bg-gray-50 rounded-xl">
-              <Download size={32} className="mx-auto mb-2 text-gray-300"/>
-              <p className="text-xs text-gray-400">اضغط "جلب المنتجات" لعرض المنتجات المتاحة</p>
-            </div>
-          )}
-
-          <button
-            onClick={async () => {
-              if (!targetSubcategoryId) return showToast("اختر القسم الفرعي أولاً", 'info');
-              setSyncLoading(true); setSyncResult(null);
-              try {
-                const res = await adminFetch("/api/admin/ahminix/sync", { method:"POST", headers:{"Content-Type":"application/json"},
-                  body: JSON.stringify({ subcategoryId:parseInt(targetSubcategoryId), subSubCategoryId:targetSubSubCategoryId?parseInt(targetSubSubCategoryId):undefined, productIds:selectedProducts.length?selectedProducts:undefined, markupPercent, globalImageUrl: globalImageUrl || undefined })
-                });
-                setSyncResult(await res.json());
-              } catch(e:any){setSyncResult({error:e.message});}
-              setSyncLoading(false);
-            }}
-            disabled={syncLoading||!targetSubcategoryId}
-            className="w-full bg-[var(--brand)] text-white py-3.5 rounded-xl font-bold disabled:opacity-40 flex items-center justify-center gap-2"
-          >
-            <Download size={16} className={syncLoading?"animate-bounce":""}/>
-            {syncLoading?"جاري الاستيراد...":selectedProducts.length?`استيراد ${selectedProducts.length} منتج`:"استيراد كل المنتجات"}
-          </button>
-
-          {syncResult && (
-            <div className={`p-4 rounded-xl text-sm ${syncResult.error?'bg-red-50 text-red-700':'bg-green-50 text-green-700'}`}>
-              {syncResult.error ? `خطأ: ${syncResult.error}` : (
-                <div className="space-y-1">
-                  <p className="font-bold">اكتمل الاستيراد</p>
-                  <p>مضاف: {syncResult.summary?.added} · محدّث: {syncResult.summary?.updated} · تجاوز: {syncResult.summary?.skipped}</p>
+            {/* اختيار المزود */}
+            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-3">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
+                <ExternalLink size={16} className="text-[var(--brand)]"/> اختر المزود
+              </h3>
+              {providers.filter(p => p.is_active).length === 0 ? (
+                <div className="bg-amber-50 p-3 rounded-xl text-amber-700 text-xs font-bold text-center">
+                  لا يوجد مزود نشط — أضف مزوداً من تبويب المزودون أولاً
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {providers.filter(p => p.is_active).map(prov => (
+                    <button key={prov.id} onClick={() => setSelectedProviderId(prov.id)}
+                      className={`w-full flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all text-right ${selectedProviderId === prov.id ? "border-[var(--brand)] bg-red-50" : "border-gray-100 bg-gray-50 hover:border-gray-200"}`}>
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm ${selectedProviderId === prov.id ? "bg-[var(--brand)] text-white" : "bg-white text-gray-600 border border-gray-200"}`}>
+                        {prov.name[0]?.toUpperCase()}
+                      </div>
+                      <div className="flex-1 text-right">
+                        <p className={`font-bold text-sm ${selectedProviderId === prov.id ? "text-[var(--brand)]" : "text-gray-700"}`}>{prov.name}</p>
+                        <p className="text-[10px] text-gray-400 font-mono">{prov.base_url}</p>
+                      </div>
+                      {selectedProviderId === prov.id && <CheckCircle size={18} className="text-[var(--brand)] flex-shrink-0"/>}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
-          )}
-        </div>
+
+            {selectedProviderId && (
+              <>
+                {/* إعدادات الاستيراد */}
+                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+                  <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
+                    <Download size={16} className="text-[var(--brand)]"/> إعدادات الاستيراد
+                  </h3>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">القسم الفرعي <span className="text-red-400">*</span></label>
+                    <select value={targetSubcategoryId} onChange={e => { setTargetSubcategoryId(e.target.value); setTargetSubSubCategoryId(""); }}
+                      className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm outline-none focus:border-[var(--brand)]">
+                      <option value="">-- اختر القسم الفرعي --</option>
+                      {localSubcats.map((s: any) => <option key={s.id} value={s.id}>{s.name} (#{s.id})</option>)}
+                    </select>
+                  </div>
+                  {targetSubcategoryId && localSubSubs.filter((ss: any) => String(ss.subcategory_id) === String(targetSubcategoryId)).length > 0 && (
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">فرع فرعي <span className="text-gray-300">(اختياري)</span></label>
+                      <select value={targetSubSubCategoryId} onChange={e => setTargetSubSubCategoryId(e.target.value)}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm outline-none">
+                        <option value="">-- بدون فرع فرعي --</option>
+                        {localSubSubs.filter((ss: any) => String(ss.subcategory_id) === String(targetSubcategoryId)).map((ss: any) => <option key={ss.id} value={ss.id}>{ss.name} (#{ss.id})</option>)}
+                      </select>
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">نسبة الربح %</label>
+                    <input type="number" min={0} max={500} value={markupPercent} onChange={e => setMarkupPercent(parseFloat(e.target.value) || 0)}
+                      className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm outline-none" placeholder="0 = بدون هامش"/>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">صورة موحدة <span className="text-gray-300">(اختياري)</span></label>
+                    <div className="flex gap-2">
+                      <input type="text" value={globalImageUrl} onChange={e => setGlobalImageUrl(e.target.value)}
+                        className="flex-1 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm outline-none" placeholder="https://... رابط الصورة"/>
+                      <label className="bg-gray-100 text-gray-600 px-3 py-3 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1 whitespace-nowrap hover:bg-gray-200 transition-colors">
+                        <Upload size={14}/> رفع
+                        <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                          const file = e.target.files?.[0]; if (!file) return;
+                          try {
+                            const formData = new FormData(); formData.append("image", file);
+                            const imgbbKey = (import.meta as any).env.VITE_IMGBB_API_KEY || "97ffbf56fe1a203445531d664cd4b928";
+                            const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, { method: "POST", body: formData });
+                            const data = await res.json();
+                            if (data.success) setGlobalImageUrl(data.data.url);
+                            else showToast("فشل رفع الصورة", "error");
+                          } catch { showToast("خطأ في رفع الصورة", "error"); }
+                        }}/>
+                      </label>
+                    </div>
+                    {globalImageUrl && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <img loading="lazy" src={globalImageUrl} className="w-12 h-12 object-cover rounded-lg border border-gray-100" referrerPolicy="no-referrer"/>
+                        <button onClick={() => setGlobalImageUrl("")} className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded-lg">حذف</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* جلب المنتجات وعرضها */}
+                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm"><Download size={16} className="text-[var(--brand)]"/>منتجات المزود</h3>
+                    <button onClick={loadProviderProducts} disabled={loadingProducts}
+                      className="bg-[var(--brand)] text-white px-4 py-2 rounded-xl text-xs font-bold disabled:opacity-50 flex items-center gap-1">
+                      <RefreshCw size={12} className={loadingProducts ? "animate-spin" : ""}/>{loadingProducts ? "جاري..." : "جلب المنتجات"}
+                    </button>
+                  </div>
+
+                  {loadingProducts && (
+                    <div className="flex items-center justify-center py-8 gap-3">
+                      <RefreshCw size={20} className="animate-spin text-[var(--brand)]"/>
+                      <span className="text-sm text-gray-500">جاري الجلب...</span>
+                    </div>
+                  )}
+
+                  {!loadingProducts && providerProducts.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-bold text-gray-600">المنتجات ({providerProducts.length})</p>
+                        <div className="flex gap-2">
+                          <button onClick={() => setSelectedProducts(filteredProducts.map((p: any) => p.id))} className="text-xs text-[var(--brand)] font-bold">تحديد الكل</button>
+                          <span className="text-gray-300">|</span>
+                          <button onClick={() => setSelectedProducts([])} className="text-xs text-gray-400 font-bold">إلغاء الكل</button>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Search size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+                          <input type="text" placeholder="بحث..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                            className="w-full bg-gray-50 border border-gray-100 rounded-xl pr-8 pl-3 py-2 text-xs outline-none"/>
+                        </div>
+                        <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
+                          className="bg-gray-50 border border-gray-100 rounded-xl px-2 py-2 text-xs outline-none max-w-[100px]">
+                          <option value="">الكل</option>
+                          {uniqueCategories.map((c: any) => <option key={String(c)} value={String(c)}>{String(c)}</option>)}
+                        </select>
+                      </div>
+                      {selectedProducts.length > 0 && (
+                        <div className="bg-red-50 text-[var(--brand)] text-xs font-bold px-3 py-2 rounded-xl">
+                          تم تحديد {selectedProducts.length} منتج
+                        </div>
+                      )}
+                      <div className="space-y-2 max-h-72 overflow-y-auto rounded-xl border border-gray-100">
+                        {filteredProducts.length === 0 ? (
+                          <div className="text-center py-6 text-gray-400 text-xs">لا توجد منتجات مطابقة</div>
+                        ) : filteredProducts.map((p: any) => (
+                          <div key={p.id} onClick={() => toggleProduct(p.id)}
+                            className={`flex items-center gap-3 p-3 cursor-pointer transition-all ${selectedProducts.includes(p.id) ? "bg-red-50 border-r-2 border-[var(--brand)]" : "bg-white hover:bg-gray-50"}`}>
+                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all ${selectedProducts.includes(p.id) ? "border-[var(--brand)] bg-[var(--brand)]" : "border-gray-300"}`}>
+                              {selectedProducts.includes(p.id) && <CheckCircle size={12} className="text-white"/>}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-gray-800 truncate">{p.name}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[10px] text-gray-400">{p.category_name}</span>
+                                <span className="text-[10px] font-bold text-[var(--brand)]">{p.price} $</span>
+                                {p.id && <span className="text-[9px] text-gray-300">#{p.id}</span>}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {!loadingProducts && productsFetched && providerProducts.length === 0 && (
+                    <div className="text-center py-6 bg-red-50 rounded-xl border border-red-100">
+                      <Download size={32} className="mx-auto mb-2 text-red-300"/>
+                      <p className="text-xs text-red-600 font-bold">لم يتم العثور على منتجات</p>
+                      <p className="text-[10px] text-red-400 mt-1">تحقق من إعدادات المزود</p>
+                    </div>
+                  )}
+
+                  {!loadingProducts && !productsFetched && (
+                    <div className="text-center py-6 bg-gray-50 rounded-xl">
+                      <Download size={32} className="mx-auto mb-2 text-gray-300"/>
+                      <p className="text-xs text-gray-400">اضغط "جلب المنتجات" لعرض المنتجات</p>
+                    </div>
+                  )}
+
+                  {/* زر الاستيراد */}
+                  <button onClick={handleSync} disabled={syncLoading || !targetSubcategoryId}
+                    className="w-full bg-[var(--brand)] text-white py-3.5 rounded-xl font-bold disabled:opacity-40 flex items-center justify-center gap-2">
+                    <Download size={16} className={syncLoading ? "animate-bounce" : ""}/>
+                    {syncLoading ? "جاري الاستيراد..." : selectedProducts.length ? `استيراد ${selectedProducts.length} منتج` : "استيراد كل المنتجات"}
+                  </button>
+
+                  {syncResult && (
+                    <div className={`p-4 rounded-xl text-sm ${syncResult.error ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
+                      {syncResult.error ? `خطأ: ${syncResult.error}` : (
+                        <div className="space-y-1">
+                          <p className="font-bold">✅ اكتمل الاستيراد — {syncResult.provider}</p>
+                          <p>مضاف: {syncResult.summary?.added} · محدّث: {syncResult.summary?.updated} · تجاوز: {syncResult.summary?.skipped}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════════════
+            TAB 3: الطلبات — تحديث وفحص
+        ══════════════════════════════════════════════════════════════════ */}
+        {activeTab === "orders" && (
+          <div className="space-y-4">
+
+            {/* تحديث كل الطلبات */}
+            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
+                <RefreshCw size={16} className="text-[var(--brand)]"/> تحديث حالة الطلبات
+              </h3>
+              <p className="text-xs text-gray-500">يفحص جميع الطلبات بحالة "processing" ويحدّثها من جميع المزودين تلقائياً</p>
+              <button onClick={handleRefreshOrders} disabled={refreshLoading}
+                className="w-full bg-[var(--brand)] text-white py-3 rounded-xl font-bold disabled:opacity-50 flex items-center justify-center gap-2">
+                <RefreshCw size={16} className={refreshLoading ? "animate-spin" : ""}/>
+                {refreshLoading ? "جاري التحديث..." : "تحديث جميع الطلبات"}
+              </button>
+              {refreshResult && (
+                <div className={`p-4 rounded-xl text-sm font-medium ${refreshResult.error ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
+                  {refreshResult.error ? `خطأ: ${refreshResult.error}` : `✅ تم تحديث ${refreshResult.updated} طلب`}
+                </div>
+              )}
+            </div>
+
+            {/* فحص طلب محدد */}
+            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
+                <Search size={16} className="text-[var(--brand)]"/> فحص طلب محدد
+              </h3>
+
+              {/* اختيار المزود للفحص */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1.5 block">المزود</label>
+                <select value={selectedProviderId || ""} onChange={e => setSelectedProviderId(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm outline-none">
+                  <option value="">-- اختر المزود --</option>
+                  {providers.filter(p => p.is_active).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+
+              <div className="flex gap-2">
+                <input type="text" placeholder="ID الطلب أو UUID" value={checkOrderId} onChange={e => setCheckOrderId(e.target.value)}
+                  className="flex-1 bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none border border-gray-100" dir="ltr"/>
+                <button onClick={handleCheckOrder} disabled={checkLoading || !selectedProviderId}
+                  className="bg-[var(--brand)] text-white px-4 py-3 rounded-xl font-bold text-sm disabled:opacity-50">
+                  {checkLoading ? "..." : "فحص"}
+                </button>
+              </div>
+
+              {checkResult && (
+                <div className="bg-gray-50 p-4 rounded-xl">
+                  {checkResult.error ? (
+                    <p className="text-red-500 text-sm">{checkResult.error}</p>
+                  ) : checkResult.data?.[0] ? (() => {
+                    const d = checkResult.data[0];
+                    const replayCodes: string[] = (() => {
+                      if (!d.replay_api) return [];
+                      const arr = Array.isArray(d.replay_api) ? d.replay_api : [d.replay_api];
+                      return arr.filter(Boolean).map((x: any) => {
+                        if (typeof x === "string") return x;
+                        if (typeof x === "number") return String(x);
+                        if (typeof x === "object") { const v = x.replay ?? x.code ?? x.value ?? null; return v !== null ? String(v) : JSON.stringify(x); }
+                        return String(x);
+                      });
+                    })();
+                    const statusColor = d.status === "accept" ? "text-green-700 bg-green-100" : d.status === "reject" ? "text-red-700 bg-red-100" : "text-amber-700 bg-amber-100";
+                    return (
+                      <div className="space-y-3">
+                        <p className="text-[10px] font-bold text-gray-400 border-b border-gray-200 pb-2">تفاصيل الطلب</p>
+                        {d.order_id !== undefined && <div className="flex justify-between"><span className="text-gray-500 text-sm">رقم العملية</span><span className="font-bold text-sm">{d.order_id}</span></div>}
+                        {d.product_name && <div className="flex justify-between gap-2"><span className="text-gray-500 text-sm shrink-0">المنتج</span><span className="font-bold text-xs text-left">{d.product_name}</span></div>}
+                        {d.qty !== undefined && <div className="flex justify-between"><span className="text-gray-500 text-sm">الكمية</span><span className="font-bold text-sm">{d.qty}</span></div>}
+                        <div className="flex justify-between items-center"><span className="text-gray-500 text-sm">الحالة</span><span className={`font-bold text-sm px-3 py-1 rounded-full ${statusColor}`}>{d.status}</span></div>
+                        {replayCodes.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="text-gray-500 text-sm font-semibold">الرد</p>
+                            <div className="bg-white p-3 rounded-xl border border-gray-200">
+                              <p className="text-xs text-gray-800 font-mono break-all whitespace-pre-wrap">{replayCodes.join("\n")}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })() : <p className="text-gray-500 text-sm text-center">لم يتم العثور على الطلب</p>}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
       </div>
     );
   };
+
 
 const OrderPollingStatus = ({ externalOrderId, onStatusChange }: { externalOrderId: string; onStatusChange: (status: string, replayApi: any[]) => void }) => {
   const [polling, setPolling] = React.useState(false);
