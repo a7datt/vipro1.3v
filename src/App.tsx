@@ -721,6 +721,8 @@ export default function App() {
     const stored = localStorage.getItem("sypRate");
     return stored ? parseFloat(stored) : 133.5;
   });
+  const [sypRateUpdatedAt, setSypRateUpdatedAt] = useState<string>(() => localStorage.getItem("sypRateUpdatedAt") || "");
+  const [showRateTooltip, setShowRateTooltip] = useState(false);
   const [voucherCode, setVoucherCode] = useState("");
   // ── Wallet charge form states (رُفعت هنا لمنع ضياع البيانات عند إعادة الرسم) ──
   // wallet state moved inside WalletChargeView for keyboard stability
@@ -1417,6 +1419,9 @@ export default function App() {
       if (data.rate && !isNaN(data.rate)) {
         setSypRate(data.rate);
         localStorage.setItem("sypRate", String(data.rate));
+        const now = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+        setSypRateUpdatedAt(now);
+        localStorage.setItem("sypRateUpdatedAt", now);
       }
     } catch (e) { /* silent */ }
   };
@@ -1660,7 +1665,7 @@ export default function App() {
   // دالة تنسيق السعر حسب العملة المختارة
   const fmtPrice = (usd: number, decimals?: number) => {
     if (currency === "SYP") {
-      return `${Math.round(usd * sypRate).toLocaleString("ar-SY")} ل.س`;
+      return `${Math.round(usd * sypRate).toLocaleString("en-US")} ل.س`;
     }
     return `${usd.toFixed(decimals !== undefined ? decimals : 2)} $`;
   };
@@ -1691,12 +1696,28 @@ export default function App() {
       
       <div className="flex items-center gap-4">
         {user && (
-          <div className={`${theme.textDark} flex items-center`}>
-            <span className="font-bold">
+          <div className="relative flex items-center select-none">
+            <span
+              className={`font-bold cursor-pointer ${theme.textDark}`}
+              onMouseDown={() => { if (currency === "SYP") setShowRateTooltip(true); }}
+              onMouseUp={() => setShowRateTooltip(false)}
+              onMouseLeave={() => setShowRateTooltip(false)}
+              onTouchStart={() => { if (currency === "SYP") setShowRateTooltip(true); }}
+              onTouchEnd={() => setShowRateTooltip(false)}
+            >
               {currency === "SYP"
-                ? `${Math.round(user.balance * sypRate).toLocaleString("ar-SY")} ل.س`
+                ? `${Math.round(user.balance * sypRate).toLocaleString("en-US")} ل.س`
                 : `${user.balance.toFixed(2)} $`}
             </span>
+            {showRateTooltip && currency === "SYP" && (
+              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50 bg-gray-900 text-white rounded-xl px-3 py-2 shadow-xl text-center whitespace-nowrap pointer-events-none"
+                style={{ fontSize: "11px", minWidth: "160px" }}>
+                <p className="font-bold text-yellow-300 text-xs mb-0.5">1$ = {sypRate.toLocaleString("en-US")} ل.س</p>
+                {sypRateUpdatedAt && <p className="text-gray-300 text-[10px]">آخر تحديث: {sypRateUpdatedAt}</p>}
+                <p className="text-gray-400 text-[9px] mt-0.5">* السعر بالليرة السورية الجديدة</p>
+                <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
+              </div>
+            )}
           </div>
         )}
         <div className="relative inline-flex">
@@ -1935,10 +1956,8 @@ export default function App() {
 
               {/* ===== اختيار العملة ===== */}
               <div className="px-4 pt-3 pb-1">
-                <div
-                  className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl font-bold text-sm shadow-sm"
-                  style={{ background: "linear-gradient(135deg, #c9a84c, #f5d485, #c9a84c)", color: "#4a2e00" }}
-                >
+                <div className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl font-bold text-sm shadow-sm"
+                  style={{ background: "linear-gradient(135deg, #f5d485, #f0c030)", color: "#4a2e00" }}>
                   <div className="flex items-center gap-2">
                     <span className="text-base">💱</span>
                     <span>العملة</span>
@@ -1950,11 +1969,11 @@ export default function App() {
                       setCurrency(next);
                       localStorage.setItem("currency", next);
                     }}
-                    className="bg-white/40 border-0 rounded-lg px-2 py-1 font-black text-sm cursor-pointer outline-none"
-                    style={{ color: "#4a2e00" }}
+                    className="border-0 rounded-lg px-3 py-1 font-black text-sm cursor-pointer outline-none"
+                    style={{ background: "rgba(255,255,255,0.45)", color: "#4a2e00" }}
                   >
-                    <option value="USD">$ دولار</option>
-                    <option value="SYP">ل.س ليرة</option>
+                    <option value="USD">$</option>
+                    <option value="SYP">ل.س</option>
                   </select>
                 </div>
               </div>
@@ -5785,11 +5804,11 @@ export default function App() {
               setCurrency(next);
               localStorage.setItem("currency", next);
             }}
-            className="px-3 py-1.5 rounded-xl font-bold text-xs shadow-sm outline-none cursor-pointer border-0"
-            style={{ background: "linear-gradient(135deg, #c9a84c, #f5d485)", color: "#4a2e00" }}
+            className="px-4 py-1.5 rounded-xl font-black text-sm shadow-sm outline-none cursor-pointer border-0"
+            style={{ background: "linear-gradient(135deg, #f5d485, #f0c030)", color: "#4a2e00" }}
           >
-            <option value="USD">$ دولار</option>
-            <option value="SYP">ل.س ليرة</option>
+            <option value="USD">$</option>
+            <option value="SYP">ل.س</option>
           </select>
         </div>
         {/* الوضع الليلي */}
