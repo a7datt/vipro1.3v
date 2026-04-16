@@ -1692,7 +1692,11 @@ export default function App() {
       <div className="flex items-center gap-4">
         {user && (
           <div className={`${theme.textDark} flex items-center`}>
-            <span className="font-bold">{user.balance.toFixed(2)} $</span>
+            <span className="font-bold">
+              {currency === "SYP"
+                ? `${Math.round(user.balance * sypRate).toLocaleString("ar-SY")} ل.س`
+                : `${user.balance.toFixed(2)} $`}
+            </span>
           </div>
         )}
         <div className="relative inline-flex">
@@ -1929,27 +1933,30 @@ export default function App() {
             {/* ===== قائمة العناصر ===== */}
             <div className="flex-1 overflow-y-auto py-2">
 
-              {/* ===== زر تبديل العملة ===== */}
+              {/* ===== اختيار العملة ===== */}
               <div className="px-4 pt-3 pb-1">
-                <button
-                  onClick={() => {
-                    const next = currency === "USD" ? "SYP" : "USD";
-                    setCurrency(next);
-                    localStorage.setItem("currency", next);
-                  }}
-                  className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl font-bold text-sm shadow-sm transition-all active:scale-95"
+                <div
+                  className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl font-bold text-sm shadow-sm"
                   style={{ background: "linear-gradient(135deg, #c9a84c, #f5d485, #c9a84c)", color: "#4a2e00" }}
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-base">💱</span>
                     <span>العملة</span>
                   </div>
-                  <div className="flex items-center gap-2 bg-white/40 px-3 py-1 rounded-lg">
-                    <span className="font-black">{currency === "USD" ? "$ دولار" : "ل.س ليرة"}</span>
-                    {currency === "SYP" && <span className="text-[9px] opacity-80">{sypRate} ل.س/$</span>}
-                    <span className="text-[10px] opacity-70">اضغط</span>
-                  </div>
-                </button>
+                  <select
+                    value={currency}
+                    onChange={(e) => {
+                      const next = e.target.value as "USD" | "SYP";
+                      setCurrency(next);
+                      localStorage.setItem("currency", next);
+                    }}
+                    className="bg-white/40 border-0 rounded-lg px-2 py-1 font-black text-sm cursor-pointer outline-none"
+                    style={{ color: "#4a2e00" }}
+                  >
+                    <option value="USD">$ دولار</option>
+                    <option value="SYP">ل.س ليرة</option>
+                  </select>
+                </div>
               </div>
 
 
@@ -5771,17 +5778,19 @@ export default function App() {
             <span className="text-lg">💱</span>
             <span className="font-medium text-gray-700">عملة العرض</span>
           </div>
-          <button
-            onClick={() => {
-              const next = currency === "USD" ? "SYP" : "USD";
+          <select
+            value={currency}
+            onChange={(e) => {
+              const next = e.target.value as "USD" | "SYP";
               setCurrency(next);
               localStorage.setItem("currency", next);
             }}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold text-xs shadow-sm transition-all active:scale-95"
+            className="px-3 py-1.5 rounded-xl font-bold text-xs shadow-sm outline-none cursor-pointer border-0"
             style={{ background: "linear-gradient(135deg, #c9a84c, #f5d485)", color: "#4a2e00" }}
           >
-            {currency === "USD" ? "$ دولار" : "ل.س ليرة"}
-          </button>
+            <option value="USD">$ دولار</option>
+            <option value="SYP">ل.س ليرة</option>
+          </select>
         </div>
         {/* الوضع الليلي */}
         <div className="p-4 flex items-center justify-between">
