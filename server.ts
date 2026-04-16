@@ -4473,11 +4473,18 @@ ${responseText}`);
   // API لجلب سعر الصرف الحالي من قاعدة البيانات
   app.get("/api/syp-rate", async (req, res) => {
     try {
-      const { data } = await supabase.from("settings").select("value").eq("key", "syp_rate").single();
+      const { data, error } = await supabase.from("settings").select("value").eq("key", "syp_rate").single();
+      if (error && error.code !== "PGRST116") {
+        // PGRST116 = row not found — ليس خطأ حقيقياً
+        console.error("[SYP-RATE] DB fetch error:", error.message);
+        return res.json({ rate: null });
+      }
       const rate = data?.value ? parseFloat(data.value) : null;
-      res.json({ rate: rate || null });
+      const validRate = rate && !isNaN(rate) && rate > 0 ? rate : null;
+      res.json({ rate: validRate });
     } catch (e: any) {
-      safeError(res, e);
+      console.error("[SYP-RATE] Unexpected error:", e.message);
+      res.json({ rate: null });
     }
   });
 
@@ -4489,10 +4496,14 @@ ${responseText}`);
         return res.status(400).json({ error: "Invalid rate value" });
       }
       const parsedRate = parseFloat(Number(rate).toFixed(2));
-      await supabase.from("settings").upsert(
+      const { error } = await supabase.from("settings").upsert(
         { key: "syp_rate", value: String(parsedRate) },
         { onConflict: "key" }
       );
+      if (error) {
+        console.error("[SYP-RATE] DB upsert error:", error.message);
+        return res.status(500).json({ error: "Failed to save rate to database" });
+      }
       console.log(`[SYP-RATE] Updated from frontend: 1$ = ${parsedRate} ل.س`);
       res.json({ ok: true, rate: parsedRate });
     } catch (e: any) {
