@@ -2588,8 +2588,9 @@ async function startServer() {
       const { data: user } = await supabase.from("users").select("id, name, balance").eq("id", userId).single();
       if (!user) return res.status(404).json({ error: "المستخدم غير موجود" });
 
-      // Convert SYP → USD (120 SYP = 1 USD)
-      const SYP_TO_USD_RATE = 120;
+      // Convert SYP → USD (dynamic rate from DB, fallback 133.5)
+      const { data: rateRow } = await supabase.from("settings").select("value").eq("key", "syp_rate").single();
+      const SYP_TO_USD_RATE = rateRow?.value ? parseFloat(rateRow.value) : 133.5;
       const usdAmount = apiCurrency === "SYP"
         ? parseFloat((apiAmount / SYP_TO_USD_RATE).toFixed(4))
         : apiAmount;
@@ -4464,6 +4465,38 @@ ${responseText}`);
   setTimeout(runAutoRefreshOrders, 8000);
   setInterval(runAutoRefreshOrders, 2 * 60 * 1000);
   console.log("[AUTO-REFRESH] Started — checking pending orders every 2 minutes");
+
+  // =================== SYP EXCHANGE RATE — جلب سعر صرف الليرة السورية ===================
+  const fetchAndStoreSypRate = async () => {
+    try {
+      const res = await fetch("https://sse.sp-today.com/snapshot");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const buyRaw = json?.data?.currencies?.["USD:damascus"]?.buy;
+      if (!buyRaw || isNaN(Number(buyRaw))) throw new Error("Invalid buy value");
+      // نقسم على 100 قبل التخزين (نحذف صفرين)
+      const rate = parseFloat((Number(buyRaw) / 100).toFixed(2));
+      await supabase.from("settings").upsert({ key: "syp_rate", value: String(rate) }, { onConflict: "key" });
+      console.log(`[SYP-RATE] Updated: 1$ = ${rate} ل.س (raw buy: ${buyRaw})`);
+    } catch (e: any) {
+      console.error("[SYP-RATE] Failed to fetch rate:", e?.message || e);
+    }
+  };
+
+  // جلب فوري عند البدء ثم كل 60 دقيقة
+  setTimeout(fetchAndStoreSypRate, 5000);
+  setInterval(fetchAndStoreSypRate, 60 * 60 * 1000);
+
+  // API لجلب سعر الصرف الحالي
+  app.get("/api/syp-rate", async (req, res) => {
+    try {
+      const { data } = await supabase.from("settings").select("value").eq("key", "syp_rate").single();
+      const rate = data?.value ? parseFloat(data.value) : null;
+      res.json({ rate: rate || null });
+    } catch (e: any) {
+      safeError(res, e);
+    }
+  });
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
