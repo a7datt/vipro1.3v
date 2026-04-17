@@ -717,8 +717,11 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(localStorage.getItem("theme") === "dark");
   // ── Currency state ──
   const [currency, setCurrency] = useState<"USD"|"SYP">(() => (localStorage.getItem("currency") as any) || "USD");
-  const [sypRate, setSypRate] = useState<number>(0); // يُجلب دائماً من API — لا نعتمد على localStorage
-  const [sypRateUpdatedAt, setSypRateUpdatedAt] = useState<string>("");
+  const [sypRate, setSypRate] = useState<number>(() => {
+    const stored = localStorage.getItem("sypRate");
+    return stored ? parseFloat(stored) : 133.5;
+  });
+  const [sypRateUpdatedAt, setSypRateUpdatedAt] = useState<string>(() => localStorage.getItem("sypRateUpdatedAt") || "");
   const [showRateTooltip, setShowRateTooltip] = useState(false);
   const [voucherCode, setVoucherCode] = useState("");
   // ── Wallet charge form states (رُفعت هنا لمنع ضياع البيانات عند إعادة الرسم) ──
@@ -1055,12 +1058,9 @@ export default function App() {
     fetchBanners();
     fetchOffers();
     fetchSiteSettings();
-    // 1) جلب السعر من DB فوراً لعرضه في الواجهة
-    // 2) بعده محاولة تحديثه من الموقع الخارجي وحفظه في DB
-    fetchSypRate().then(() => {
-      fetchAndStoreSypRateFromBrowser();
-    });
-    // تحديث السعر الحي كل 30 دقيقة
+    fetchSypRate(); // جلب السعر المحفوظ في DB فوراً
+    fetchAndStoreSypRateFromBrowser(); // جلب السعر الحي من المتصفح وحفظه في DB
+    // تحديث السعر الحي كل 30 دقيقة من المتصفح
     const sypRateInterval = setInterval(fetchAndStoreSypRateFromBrowser, 30 * 60 * 1000);
     const savedUserId = localStorage.getItem("userId");
     if (savedUserId && !isNaN(Number(savedUserId))) {
@@ -1415,64 +1415,67 @@ export default function App() {
     } catch (e) { console.error("Fetch settings error:", e); }
   };
 
-  // جلب سعر الصرف من قاعدة البيانات — المصدر الوحيد للسعر
-  const fetchSypRate = async (): Promise<number | null> => {
+  const fetchSypRate = async () => {
     try {
+      // أولاً: جلب السعر المحفوظ في قاعدة البيانات لعرضه فوراً
       const res = await fetch("/api/syp-rate");
-      if (!res.ok) return null;
-      const data = await res.json();
-      const rate = data?.rate;
-      if (rate && !isNaN(Number(rate)) && Number(rate) > 0) {
-        const parsed = parseFloat(String(rate));
-        setSypRate(parsed);
-        const now = new Date().toLocaleTimeString("ar-SY", { hour: "2-digit", minute: "2-digit" });
-        setSypRateUpdatedAt(now);
-        return parsed;
+      if (res.ok) {
+        const data = await res.json();
+        if (data.rate && !isNaN(data.rate)) {
+          setSypRate(data.rate);
+          localStorage.setItem("sypRate", String(data.rate));
+          const now = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+          setSypRateUpdatedAt(now);
+          localStorage.setItem("sypRateUpdatedAt", now);
+        }
       }
-      return null;
-    } catch (e) { return null; }
+    } catch (e) { /* silent */ }
   };
 
-  // جلب السعر الحي من الموقع الخارجي وإرساله للـ DB — ثم تحديث الواجهة من DB
+  // جلب السعر الحي من المتصفح مباشرة (يتجاوز حجب السيرفر) وحفظه في قاعدة البيانات
   const fetchAndStoreSypRateFromBrowser = async () => {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-      let liveRate: number | null = null;
-      try {
-        const res = await fetch("https://sse.sp-today.com/snapshot", { signal: controller.signal });
-        clearTimeout(timeout);
-        if (res.ok) {
-          const json = await res.json();
-          const buyRaw = json?.data?.currencies?.["USD:damascus"]?.buy;
-          if (buyRaw && !isNaN(Number(buyRaw))) {
-            const r = parseFloat((Number(buyRaw) / 100).toFixed(2));
-            if (r > 0) liveRate = r;
-          }
-        }
-      } catch (_) { clearTimeout(timeout); }
+    const applyRate = (rate: number) => {
+      if (!rate || isNaN(rate) || rate <= 0) return;
+      setSypRate(rate);
+      localStorage.setItem("sypRate", String(rate));
+      const now = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+      setSypRateUpdatedAt(now);
+      localStorage.setItem("sypRateUpdatedAt", now);
+    };
 
-      if (liveRate !== null) {
-        // أرسل السعر الجديد للـ DB
-        try {
-          const postRes = await fetch("/api/syp-rate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ rate: liveRate }),
-          });
-          if (postRes.ok) {
-            // بعد الحفظ اجلب من DB لضمان تطابق الواجهة مع ما هو مخزون فعلاً
-            await fetchSypRate();
+    // المحاولة الأولى: جلب مباشر من المتصفح
+    try {
+      const res = await fetch("https://sse.sp-today.com/snapshot", { signal: AbortSignal.timeout(6000) });
+      if (res.ok) {
+        const json = await res.json();
+        const buyRaw = json?.data?.currencies?.["USD:damascus"]?.buy;
+        if (buyRaw && !isNaN(Number(buyRaw))) {
+          // البيانات تأتي كـ 12700 أي 127.00 ل.س/$ بعد القسمة على 100
+          const rate = parseFloat((Number(buyRaw) / 100).toFixed(2));
+          if (rate > 0) {
+            applyRate(rate);
+            // حفظ السعر في قاعدة البيانات عبر السيرفر
+            fetch("/api/syp-rate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ rate }),
+            }).catch(() => {});
             return;
           }
-        } catch (_) {}
+        }
       }
+    } catch (_) { /* CORS أو timeout — سنجرب الـ proxy */ }
 
-      // fallback: اجلب ما هو موجود في DB حالياً
-      await fetchSypRate();
-    } catch (e) {
-      await fetchSypRate();
-    }
+    // المحاولة الثانية: استخدام proxy السيرفر (يتجاوز قيود CORS)
+    try {
+      const proxyRes = await fetch("/api/syp-rate/fetch");
+      if (proxyRes.ok) {
+        const data = await proxyRes.json();
+        if (data.rate && !isNaN(data.rate) && data.rate > 0) {
+          applyRate(data.rate);
+        }
+      }
+    } catch (_) { /* silent */ }
   };
 
   const fetchCategories = async () => {
@@ -1714,7 +1717,6 @@ export default function App() {
   // دالة تنسيق السعر حسب العملة المختارة
   const fmtPrice = (usd: number, decimals?: number) => {
     if (currency === "SYP") {
-      if (sypRate === 0) return "...";
       return `${Math.round(usd * sypRate).toLocaleString("en-US")} ل.س`;
     }
     return `${usd.toFixed(decimals !== undefined ? decimals : 2)} $`;
@@ -1756,16 +1758,14 @@ export default function App() {
               onTouchEnd={() => setShowRateTooltip(false)}
             >
               {currency === "SYP"
-                ? (sypRate === 0 ? "..." : `${Math.round(user.balance * sypRate).toLocaleString("en-US")} ل.س`)
+                ? `${Math.round(user.balance * sypRate).toLocaleString("en-US")} ل.س`
                 : `${user.balance.toFixed(2)} $`}
             </span>
             {showRateTooltip && currency === "SYP" && (
               <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50 bg-gray-900 text-white rounded-xl px-3 py-2 shadow-xl text-center whitespace-nowrap pointer-events-none"
                 style={{ fontSize: "11px", minWidth: "160px" }}>
-                <p className="font-bold text-yellow-300 text-xs mb-0.5">
-                  {sypRate > 0 ? `1$ = ${sypRate.toLocaleString("en-US")} ل.س` : "جاري تحميل السعر..."}
-                </p>
-                {sypRateUpdatedAt && sypRate > 0 && <p className="text-gray-300 text-[10px]">آخر تحديث: {sypRateUpdatedAt}</p>}
+                <p className="font-bold text-yellow-300 text-xs mb-0.5">1$ = {sypRate.toLocaleString("en-US")} ل.س</p>
+                {sypRateUpdatedAt && <p className="text-gray-300 text-[10px]">آخر تحديث: {sypRateUpdatedAt}</p>}
                 <p className="text-gray-400 text-[9px] mt-0.5">* السعر بالليرة السورية الجديدة</p>
                 <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
               </div>
