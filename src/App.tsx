@@ -1411,7 +1411,20 @@ export default function App() {
       const res = await fetch("/api/settings");
       if (!res.ok) return;
       const data = await res.json();
-      setSiteSettings(Array.isArray(data) ? data : []);
+      const settingsArray = Array.isArray(data) ? data : [];
+      setSiteSettings(settingsArray);
+      // ── تحديث سعر الصرف مباشرة من قاعدة البيانات ──
+      const rateEntry = settingsArray.find((s: any) => s.key === "syp_rate");
+      if (rateEntry && rateEntry.value) {
+        const parsed = parseFloat(rateEntry.value);
+        if (!isNaN(parsed) && parsed > 0) {
+          setSypRate(parsed);
+          localStorage.setItem("sypRate", String(parsed));
+          const now = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+          setSypRateUpdatedAt(now);
+          localStorage.setItem("sypRateUpdatedAt", now);
+        }
+      }
     } catch (e) { console.error("Fetch settings error:", e); }
   };
 
