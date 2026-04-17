@@ -4467,26 +4467,80 @@ ${responseText}`);
   console.log("[AUTO-REFRESH] Started — checking pending orders every 2 minutes");
 
   // =================== SYP EXCHANGE RATE — سعر صرف الليرة السورية ===================
-  // ملاحظة: تم تعطيل جلب السعر من السيرفر لأن sse.sp-today.com يحجب طلبات datacenter IPs
-  // الحل: الواجهة (frontend) تجلب السعر مباشرة من المتصفح وترسله للسيرفر عبر POST /api/syp-rate
+  // المتصفح يحاول الجلب المباشر من sp-today، وعند الفشل يستخدم proxy السيرفر
+  // السيرفر يحاول الجلب أيضاً ويخزن في DB — إذا حُجب يُرجع القيمة المحفوظة
+
+  // دالة مساعدة: جلب السعر من sp-today وتخزينه في DB
+  const fetchSypRateFromSpToday = async (): Promise<number | null> => {
+    try {
+      const spRes = await fetch("https://sse.sp-today.com/snapshot", {
+        headers: {
+          "Accept": "application/json",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Origin": "https://sp-today.com",
+          "Referer": "https://sp-today.com/",
+        },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!spRes.ok) return null;
+      const json = await spRes.json();
+      const buyRaw = json?.data?.currencies?.["USD:damascus"]?.buy;
+      if (!buyRaw || isNaN(Number(buyRaw))) return null;
+      const rate = parseFloat((Number(buyRaw) / 100).toFixed(2));
+      if (rate <= 0) return null;
+      await supabase.from("settings").upsert(
+        { key: "syp_rate", value: String(rate) },
+        { onConflict: "key" }
+      );
+      console.log(`[SYP-RATE] Fetched from sp-today: 1$ = ${rate} ل.س`);
+      return rate;
+    } catch (e: any) {
+      console.warn(`[SYP-RATE] sp-today fetch failed: ${e.message}`);
+      return null;
+    }
+  };
 
   // API لجلب سعر الصرف الحالي من قاعدة البيانات
   app.get("/api/syp-rate", async (req, res) => {
     try {
-      const { data, error } = await supabase.from("settings").select("value").eq("key", "syp_rate").single();
-      if (error && error.code !== "PGRST116") {
-        // PGRST116 = row not found — ليس خطأ حقيقياً
-        console.error("[SYP-RATE] DB fetch error:", error.message);
-        return res.json({ rate: null });
-      }
+      const { data } = await supabase.from("settings").select("value").eq("key", "syp_rate").single();
       const rate = data?.value ? parseFloat(data.value) : null;
-      const validRate = rate && !isNaN(rate) && rate > 0 ? rate : null;
-      res.json({ rate: validRate });
+      res.json({ rate: rate || null });
     } catch (e: any) {
-      console.error("[SYP-RATE] Unexpected error:", e.message);
-      res.json({ rate: null });
+      safeError(res, e);
     }
   });
+
+  // API proxy: يجلب السعر الحي من sp-today ويحفظه في DB
+  // يستخدمه المتصفح كـ fallback عند فشل الجلب المباشر بسبب CORS
+  app.get("/api/syp-rate/fetch", async (req, res) => {
+    try {
+      const liveRate = await fetchSypRateFromSpToday();
+      if (liveRate !== null) {
+        return res.json({ rate: liveRate, source: "sp-today" });
+      }
+      // fallback: نرجع السعر المحفوظ في DB
+      const { data: dbRate } = await supabase.from("settings").select("value").eq("key", "syp_rate").single();
+      const fallbackRate = dbRate?.value ? parseFloat(dbRate.value) : null;
+      res.json({ rate: fallbackRate, source: "db" });
+    } catch (e: any) {
+      try {
+        const { data: dbRate } = await supabase.from("settings").select("value").eq("key", "syp_rate").single();
+        res.json({ rate: dbRate?.value ? parseFloat(dbRate.value) : null, source: "db" });
+      } catch {
+        res.json({ rate: null, source: "db" });
+      }
+    }
+  });
+
+  // تحديث السعر تلقائياً من السيرفر كل ساعة
+  const autoRefreshSypRate = async () => {
+    const rate = await fetchSypRateFromSpToday();
+    if (rate) console.log(`[SYP-RATE][AUTO] Updated: 1$ = ${rate} ل.س`);
+  };
+  setTimeout(autoRefreshSypRate, 5000);
+  setInterval(autoRefreshSypRate, 60 * 60 * 1000);
+  console.log("[SYP-RATE] Auto-refresh scheduled every 60 minutes");
 
   // API لاستقبال سعر الصرف من الواجهة وحفظه في قاعدة البيانات
   app.post("/api/syp-rate", async (req, res) => {
@@ -4496,14 +4550,10 @@ ${responseText}`);
         return res.status(400).json({ error: "Invalid rate value" });
       }
       const parsedRate = parseFloat(Number(rate).toFixed(2));
-      const { error } = await supabase.from("settings").upsert(
+      await supabase.from("settings").upsert(
         { key: "syp_rate", value: String(parsedRate) },
         { onConflict: "key" }
       );
-      if (error) {
-        console.error("[SYP-RATE] DB upsert error:", error.message);
-        return res.status(500).json({ error: "Failed to save rate to database" });
-      }
       console.log(`[SYP-RATE] Updated from frontend: 1$ = ${parsedRate} ل.س`);
       res.json({ ok: true, rate: parsedRate });
     } catch (e: any) {
