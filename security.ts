@@ -315,7 +315,7 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     // [FIX] أُضيف fonts.gstatic.com لتحميل ملفات الخط الفعلية
     "font-src 'self' data: https://fonts.gstatic.com",
     // [FIX] أُضيف Google APIs لطلبات التحقق من التوكن و FedCM
-    "connect-src 'self' https: wss: https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com",
+    "connect-src 'self' https: wss: https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://sse.sp-today.com https://sp-today.com",
     // frame-src محلي فقط — لم نعد نستخدم Google iframe
     "frame-src 'self'",
     // frame-ancestors يبقى none لمنع Clickjacking
