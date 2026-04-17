@@ -1446,49 +1446,60 @@ export default function App() {
   };
 
   // جلب السعر الحي من المتصفح مباشرة (يتجاوز حجب السيرفر) وحفظه في قاعدة البيانات
-  const fetchAndStoreSypRateFromBrowser = async () => {
-    const applyRate = (rate: number) => {
+  const fetchAndStoreSypRateFromBrowser = async (): Promise<number | null> => {
+    const applyRate = (rate: number, save = true) => {
       if (!rate || isNaN(rate) || rate <= 0) return;
       setSypRate(rate);
       localStorage.setItem("sypRate", String(rate));
       const now = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
       setSypRateUpdatedAt(now);
       localStorage.setItem("sypRateUpdatedAt", now);
+      if (save) {
+        // حفظ السعر في قاعدة البيانات عبر السيرفر
+        fetch("/api/syp-rate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rate }),
+        }).catch(() => {});
+      }
     };
 
-    // المحاولة الأولى: جلب مباشر من المتصفح
+    // جلب السعر مباشرة من المتصفح — المتصفح لديه صلاحية كاملة للوصول
     try {
-      const res = await fetch("https://sse.sp-today.com/snapshot", { signal: AbortSignal.timeout(6000) });
+      const res = await fetch("https://sse.sp-today.com/snapshot", {
+        headers: {
+          "Accept": "application/json, text/event-stream, */*",
+          "Accept-Language": "ar,en;q=0.9",
+          "Cache-Control": "no-cache",
+        },
+        signal: AbortSignal.timeout(8000),
+      });
       if (res.ok) {
         const json = await res.json();
         const buyRaw = json?.data?.currencies?.["USD:damascus"]?.buy;
         if (buyRaw && !isNaN(Number(buyRaw))) {
-          // البيانات تأتي كـ 12700 أي 127.00 ل.س/$ بعد القسمة على 100
           const rate = parseFloat((Number(buyRaw) / 100).toFixed(2));
           if (rate > 0) {
             applyRate(rate);
-            // حفظ السعر في قاعدة البيانات عبر السيرفر
-            fetch("/api/syp-rate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ rate }),
-            }).catch(() => {});
-            return;
+            return rate;
           }
         }
       }
-    } catch (_) { /* CORS أو timeout — سنجرب الـ proxy */ }
+    } catch (_) { /* فشل الجلب المباشر — نجرب الـ proxy */ }
 
-    // المحاولة الثانية: استخدام proxy السيرفر (يتجاوز قيود CORS)
+    // fallback: نستخدم الـ proxy عبر السيرفر
     try {
       const proxyRes = await fetch("/api/syp-rate/fetch");
       if (proxyRes.ok) {
         const data = await proxyRes.json();
         if (data.rate && !isNaN(data.rate) && data.rate > 0) {
-          applyRate(data.rate);
+          applyRate(data.rate, data.source !== "sp-today"); // لا نحفظ مرة ثانية إذا جاء من sp-today
+          return data.rate;
         }
       }
     } catch (_) { /* silent */ }
+
+    return null;
   };
 
   const fetchCategories = async () => {
@@ -7791,6 +7802,15 @@ const AdminPanel = ({
     const [savingDiscount, setSavingDiscount] = useState(false);
     const [savingReward, setSavingReward] = useState(false);
 
+    // Exchange rate state
+    const [adminSypRate, setAdminSypRate] = useState<number | null>(null);
+    const [manualRateInput, setManualRateInput] = useState("");
+    const [rateMode, setRateMode] = useState<"manual"|"auto">("auto");
+    const [rateLoading, setRateLoading] = useState(false);
+    const [rateSaving, setRateSaving] = useState(false);
+    const [rateFetchStatus, setRateFetchStatus] = useState<"idle"|"fetching"|"success"|"error">("idle");
+    const [rateLastUpdated, setRateLastUpdated] = useState<string>("");
+
     const fetchAdminProducts = async (subId: string) => {
       if (!subId) return;
       const res = await fetch(`/api/products?subId=${subId}`);
@@ -7880,6 +7900,12 @@ const AdminPanel = ({
       fetchAdminVouchers();
     }, []);
 
+    useEffect(() => {
+      if (adminTab === "exchange_rate" && adminSypRate === null) {
+        fetchAdminSettings();
+      }
+    }, [adminTab]);
+
     const fetchAdminVouchers = async () => {
       const res = await adminFetch("/api/admin/vouchers", { headers: { "x-admin-token": localStorage.getItem("adminToken") || "" } });
       const data = await res.json();
@@ -7924,6 +7950,94 @@ const AdminPanel = ({
       if (sw) setSupportWhatsapp(sw.value);
       if (vd) setVipDiscountVal(vd.value);
       if (rc) setReferralCommissionVal(rc.value);
+      // جلب سعر الصرف المحفوظ
+      const sr = data.find((s: any) => s.key === 'syp_rate');
+      if (sr && sr.value) {
+        const parsed = parseFloat(sr.value);
+        if (!isNaN(parsed)) {
+          setAdminSypRate(parsed);
+          setManualRateInput(String(parsed));
+        }
+      }
+    };
+
+    const fetchLiveSypRate = async () => {
+      setRateFetchStatus("fetching");
+      setRateLoading(true);
+      try {
+        // جلب مباشر من المتصفح — المتصفح لديه صلاحية
+        const res = await fetch("https://sse.sp-today.com/snapshot", {
+          headers: {
+            "Accept": "application/json, text/event-stream, */*",
+            "Accept-Language": "ar,en;q=0.9",
+            "Cache-Control": "no-cache",
+          },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          const buyRaw = json?.data?.currencies?.["USD:damascus"]?.buy;
+          if (buyRaw && !isNaN(Number(buyRaw))) {
+            const rate = parseFloat((Number(buyRaw) / 100).toFixed(2));
+            if (rate > 0) {
+              setAdminSypRate(rate);
+              setManualRateInput(String(rate));
+              setRateFetchStatus("success");
+              const now = new Date().toLocaleTimeString("ar-SY", { hour: "2-digit", minute: "2-digit" });
+              setRateLastUpdated(now);
+              setRateLoading(false);
+              return rate;
+            }
+          }
+        }
+      } catch (_) {}
+      // fallback عبر السيرفر
+      try {
+        const proxyRes = await fetch("/api/syp-rate/fetch");
+        if (proxyRes.ok) {
+          const data = await proxyRes.json();
+          if (data.rate && !isNaN(data.rate) && data.rate > 0) {
+            setAdminSypRate(data.rate);
+            setManualRateInput(String(data.rate));
+            setRateFetchStatus(data.source === "sp-today" ? "success" : "error");
+            const now = new Date().toLocaleTimeString("ar-SY", { hour: "2-digit", minute: "2-digit" });
+            setRateLastUpdated(now);
+            setRateLoading(false);
+            return data.rate;
+          }
+        }
+      } catch (_) {}
+      setRateFetchStatus("error");
+      setRateLoading(false);
+      return null;
+    };
+
+    const saveRateToDB = async (rate: number) => {
+      if (!rate || isNaN(rate) || rate <= 0) {
+        showToast("أدخل قيمة صحيحة أكبر من صفر", 'error');
+        return;
+      }
+      setRateSaving(true);
+      try {
+        const res = await fetch("/api/syp-rate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rate }),
+        });
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          setAdminSypRate(data.rate);
+          setManualRateInput(String(data.rate));
+          showToast(`✅ تم حفظ السعر: 1$ = ${data.rate} ل.س`, 'success');
+          const now = new Date().toLocaleTimeString("ar-SY", { hour: "2-digit", minute: "2-digit" });
+          setRateLastUpdated(now);
+        } else {
+          showToast("فشل حفظ السعر", 'error');
+        }
+      } catch {
+        showToast("خطأ في الاتصال بالسيرفر", 'error');
+      }
+      setRateSaving(false);
     };
 
     const handleUpdateSetting = async (key: string, value: string) => {
@@ -8344,6 +8458,170 @@ const AdminPanel = ({
               fetchSubcategories={fetchSubcategories}
               fetchSubSubCategories={fetchSubSubCategories}
             />
+          )}
+
+          {/* ===== سعر الصرف ===== */}
+          {adminTab === "exchange_rate" && (
+            <div className="space-y-4">
+              {/* Header Card */}
+              <div className="bg-gradient-to-br from-green-600 to-emerald-700 rounded-3xl p-5 text-white shadow-lg">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-white/20 rounded-2xl flex items-center justify-center">
+                    <DollarSign size={22} />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-lg">سعر صرف الليرة السورية</h2>
+                    <p className="text-green-100 text-xs">مبيع دمشق — USD:damascus</p>
+                  </div>
+                </div>
+                <div className="bg-white/15 rounded-2xl p-4 text-center">
+                  <p className="text-green-100 text-xs mb-1">السعر الحالي المحفوظ</p>
+                  <p className="text-4xl font-black">
+                    {adminSypRate ? adminSypRate.toLocaleString("en-US") : "—"}
+                  </p>
+                  <p className="text-green-200 text-sm mt-1">ل.س لكل دولار</p>
+                  {rateLastUpdated && (
+                    <p className="text-green-200 text-xs mt-2">آخر تحديث: {rateLastUpdated}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Mode Selector */}
+              <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                <p className="text-sm font-bold text-gray-700 mb-3">طريقة التحديث</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setRateMode("auto")}
+                    className={`py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+                      rateMode === "auto"
+                        ? "bg-emerald-600 text-white shadow-md"
+                        : "bg-gray-50 text-gray-600 border border-gray-200"
+                    }`}
+                  >
+                    <RefreshCw size={15} className={rateMode === "auto" ? "" : "text-gray-400"} />
+                    تلقائي
+                  </button>
+                  <button
+                    onClick={() => setRateMode("manual")}
+                    className={`py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+                      rateMode === "manual"
+                        ? "bg-blue-600 text-white shadow-md"
+                        : "bg-gray-50 text-gray-600 border border-gray-200"
+                    }`}
+                  >
+                    <Settings size={15} className={rateMode === "manual" ? "" : "text-gray-400"} />
+                    يدوي
+                  </button>
+                </div>
+              </div>
+
+              {/* AUTO MODE */}
+              {rateMode === "auto" && (
+                <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-3">
+                  <h4 className="font-bold text-sm text-gray-700 flex items-center gap-2">
+                    <RefreshCw size={15} className="text-emerald-500" />
+                    الجلب التلقائي من sp-today.com
+                  </h4>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    يتم جلب سعر المبيع (buy) لـ USD:damascus تلقائياً كل 30 دقيقة وحفظه في قاعدة البيانات. يمكنك أيضاً الجلب الفوري الآن.
+                  </p>
+
+                  {/* Status Badge */}
+                  {rateFetchStatus !== "idle" && (
+                    <div className={`flex items-center gap-2 p-3 rounded-xl text-sm font-medium ${
+                      rateFetchStatus === "fetching" ? "bg-blue-50 text-blue-700" :
+                      rateFetchStatus === "success" ? "bg-green-50 text-green-700" :
+                      "bg-red-50 text-red-700"
+                    }`}>
+                      {rateFetchStatus === "fetching" && <RefreshCw size={14} className="animate-spin" />}
+                      {rateFetchStatus === "success" && <CheckCircle size={14} />}
+                      {rateFetchStatus === "error" && <X size={14} />}
+                      {rateFetchStatus === "fetching" ? "جاري الجلب من sp-today..." :
+                       rateFetchStatus === "success" ? "تم جلب السعر بنجاح من sp-today" :
+                       "فشل الجلب — تحقق من الاتصال"}
+                    </div>
+                  )}
+
+                  {/* Fetch + Save Button */}
+                  <button
+                    disabled={rateLoading || rateSaving}
+                    onClick={async () => {
+                      const fetched = await fetchLiveSypRate();
+                      if (fetched) {
+                        await saveRateToDB(fetched);
+                      }
+                    }}
+                    className="w-full py-3.5 bg-emerald-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95 transition-all"
+                  >
+                    {(rateLoading || rateSaving) ? (
+                      <><RefreshCw size={16} className="animate-spin" /> جاري الجلب والحفظ...</>
+                    ) : (
+                      <><RefreshCw size={16} /> جلب سعر الصرف تلقائياً وحفظه</>
+                    )}
+                  </button>
+
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <p className="text-xs text-gray-500 flex items-center gap-1.5">
+                      <span className="w-2 h-2 bg-emerald-400 rounded-full inline-block"></span>
+                      التحديث التلقائي كل 30 دقيقة عبر الواجهة
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* MANUAL MODE */}
+              {rateMode === "manual" && (
+                <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-3">
+                  <h4 className="font-bold text-sm text-gray-700 flex items-center gap-2">
+                    <Settings size={15} className="text-blue-500" />
+                    إدخال السعر يدوياً
+                  </h4>
+                  <p className="text-xs text-gray-500">أدخل عدد الليرات السورية مقابل 1 دولار أمريكي</p>
+
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={manualRateInput}
+                      onChange={e => setManualRateInput(e.target.value)}
+                      placeholder="مثال: 127.00"
+                      className="w-full p-4 bg-gray-50 rounded-xl text-lg font-bold outline-none border-2 border-gray-200 focus:border-blue-400 transition-colors text-center"
+                      min="1"
+                      step="0.01"
+                    />
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">ل.س / $</span>
+                  </div>
+
+                  {manualRateInput && !isNaN(parseFloat(manualRateInput)) && parseFloat(manualRateInput) > 0 && (
+                    <div className="bg-blue-50 rounded-xl p-3 text-center">
+                      <p className="text-xs text-blue-600">المعاينة</p>
+                      <p className="font-bold text-blue-800 text-sm mt-0.5">
+                        1$ = {parseFloat(manualRateInput).toLocaleString("en-US")} ل.س
+                      </p>
+                    </div>
+                  )}
+
+                  <button
+                    disabled={rateSaving || !manualRateInput || isNaN(parseFloat(manualRateInput)) || parseFloat(manualRateInput) <= 0}
+                    onClick={() => saveRateToDB(parseFloat(manualRateInput))}
+                    className="w-full py-3.5 bg-blue-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95 transition-all"
+                  >
+                    {rateSaving ? (
+                      <><RefreshCw size={16} className="animate-spin" /> جاري الحفظ...</>
+                    ) : (
+                      <><CheckCircle size={16} /> حفظ السعر في قاعدة البيانات</>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Info Box */}
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                <p className="text-xs font-bold text-amber-800 mb-1.5">📌 ملاحظة مهمة</p>
+                <p className="text-xs text-amber-700 leading-relaxed">
+                  السعر المحفوظ يُستخدم لتحويل الدفعات بالليرة السورية إلى دولار في نظام الشحن. القيمة المجلوبة هي سعر المبيع لدمشق (buy USD:damascus) مقسومة على 100.
+                </p>
+              </div>
+            </div>
           )}
 
         </div>
@@ -8854,7 +9132,7 @@ const AdminPanel = ({
             { tab:"orders", icon:<ShoppingBag size={22}/>, label:"الطلبات", badge: adminOrders.filter((o:any)=>o.status==='pending_admin').length },
             { tab:"fab", icon:null, label:"" },
             { tab:"transactions", icon:<Wallet size={22}/>, label:"الدفعات", badge: adminTransactions.filter((t:any)=>t.status==='pending').length },
-            { tab:"chat", icon:<MessageSquare size={22}/>, label:"الشات" },
+            { tab:"exchange_rate", icon:<DollarSign size={22}/>, label:"سعر الصرف" },
             { tab:"elements", icon:<LayoutGrid size={22}/>, label:"العناصر" },
           ] as any[]).map((item:any) => {
             if (item.tab === "fab") return (
