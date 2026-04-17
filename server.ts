@@ -4310,34 +4310,95 @@ ${responseText}`);
   // السيرفر يجلب من sp-today مباشرة (لا يوجد CORS على السيرفر) ويحفظ في DB
   // المتصفح يستخدم /api/syp-rate/fetch فقط (proxy) — لا جلب مباشر من المتصفح
 
-  // دالة مساعدة: جلب السعر من sp-today وتخزينه في DB
+  // دالة مساعدة: استخراج سعر المبيع من HTML الصفحة بالـ regex
+  const parseSellRateFromHtml = (html: string): number | null => {
+    // المحاولة الأولى: البحث عن قسم الدولار الأمريكي وسعر المبيع بشكل مباشر
+    // الموقع يعرض الأسعار في جداول أو عناصر تحتوي على "مبيع" أو "sell"
+    // نبحث عن أنماط متعددة لضمان الحصول على القيمة الصحيحة
+
+    // النمط 1: البحث عن رقم كبير (سعر الليرة) بعد كلمة مبيع أو sell بالقرب من USD أو دولار
+    const patterns = [
+      // نمط: سعر مبيع USD — رقم من 5 إلى 7 خانات
+      /مبيع[\s\S]{0,200}?([\d,]{4,8})/i,
+      /sell[\s\S]{0,200}?([\d,]{4,8})/i,
+      // نمط: الرقم قبل مبيع
+      /([\d,]{4,8})[\s\S]{0,100}?مبيع/i,
+      // نمط عام: رقم كبير بجانب USD في الصفحة
+      /USD[\s\S]{0,300}?([\d,]{4,8})/i,
+      /دولار[\s\S]{0,300}?([\d,]{4,8})/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      if (match?.[1]) {
+        const cleaned = match[1].replace(/,/g, "");
+        const num = parseFloat(cleaned);
+        // سعر الدولار بالليرة السورية يجب أن يكون في نطاق معقول
+        if (num >= 5000 && num <= 50000) {
+          return parseFloat((num / 100).toFixed(2));
+        }
+      }
+    }
+    return null;
+  };
+
+  // دالة مساعدة: جلب السعر بالـ scraping من صفحة sp-today وتخزينه في DB
   const fetchSypRateFromSpToday = async (): Promise<number | null> => {
-    try {
-      const spRes = await fetch("https://sse.sp-today.com/snapshot", {
-        headers: {
-          "Accept": "application/json",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Origin": "https://sp-today.com",
-          "Referer": "https://sp-today.com/",
-        },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!spRes.ok) return null;
-      const json = await spRes.json();
-      const buyRaw = json?.data?.currencies?.["USD:damascus"]?.buy;
-      if (!buyRaw || isNaN(Number(buyRaw))) return null;
-      const rate = parseFloat((Number(buyRaw) / 100).toFixed(2));
-      if (rate <= 0) return null;
+    const fetchHeaders = {
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "ar,en;q=0.9",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Cache-Control": "no-cache",
+    };
+
+    const saveRate = async (rate: number, source: string): Promise<void> => {
       await supabase.from("settings").upsert(
         { key: "syp_rate", value: String(rate) },
         { onConflict: "key" }
       );
-      console.log(`[SYP-RATE] ✅ Fetched from sp-today: 1$ = ${rate} ل.س`);
-      return rate;
+      console.log(`[SYP-RATE] ✅ Fetched from ${source}: 1$ = ${rate} ل.س`);
+    };
+
+    // ── المحاولة الأولى: صفحة الدولار الأمريكي ──
+    try {
+      const res1 = await fetch("https://sp-today.com/currency/us-dollar", {
+        headers: fetchHeaders,
+        signal: AbortSignal.timeout(12000),
+      });
+      if (res1.ok) {
+        const html1 = await res1.text();
+        const rate1 = parseSellRateFromHtml(html1);
+        if (rate1 && rate1 > 0) {
+          await saveRate(rate1, "sp-today/us-dollar");
+          return rate1;
+        }
+        console.warn("[SYP-RATE] ⚠️ sp-today/us-dollar: HTML fetched but rate not found, trying homepage...");
+      }
     } catch (e: any) {
-      console.warn(`[SYP-RATE] ⚠️ sp-today fetch failed: ${e.message}`);
-      return null;
+      console.warn(`[SYP-RATE] ⚠️ sp-today/us-dollar fetch error: ${e.message}`);
     }
+
+    // ── المحاولة الثانية: الصفحة الرئيسية ──
+    try {
+      const res2 = await fetch("https://sp-today.com", {
+        headers: fetchHeaders,
+        signal: AbortSignal.timeout(12000),
+      });
+      if (res2.ok) {
+        const html2 = await res2.text();
+        const rate2 = parseSellRateFromHtml(html2);
+        if (rate2 && rate2 > 0) {
+          await saveRate(rate2, "sp-today/homepage");
+          return rate2;
+        }
+        console.warn("[SYP-RATE] ⚠️ sp-today homepage: HTML fetched but rate not found");
+      }
+    } catch (e: any) {
+      console.warn(`[SYP-RATE] ⚠️ sp-today homepage fetch error: ${e.message}`);
+    }
+
+    console.warn("[SYP-RATE] ⚠️ All scraping attempts failed — DB value retained");
+    return null;
   };
 
   // GET /api/syp-rate — يُرجع السعر المحفوظ في DB فوراً
