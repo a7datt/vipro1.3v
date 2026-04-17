@@ -4306,102 +4306,9 @@ ${responseText}`);
     }
   });
 
-  // =================== SYP EXCHANGE RATE — سعر صرف الليرة السورية ===================
-  // السيرفر يجلب من sp-today مباشرة (لا يوجد CORS على السيرفر) ويحفظ في DB
-  // المتصفح يستخدم /api/syp-rate/fetch فقط (proxy) — لا جلب مباشر من المتصفح
+  // =================== SYP EXCHANGE RATE — سعر صرف الليرة السورية (يدوي) ===================
 
-  // دالة مساعدة: استخراج سعر المبيع من HTML الصفحة بالـ regex
-  const parseSellRateFromHtml = (html: string): number | null => {
-    // المحاولة الأولى: البحث عن قسم الدولار الأمريكي وسعر المبيع بشكل مباشر
-    // الموقع يعرض الأسعار في جداول أو عناصر تحتوي على "مبيع" أو "sell"
-    // نبحث عن أنماط متعددة لضمان الحصول على القيمة الصحيحة
-
-    // النمط 1: البحث عن رقم كبير (سعر الليرة) بعد كلمة مبيع أو sell بالقرب من USD أو دولار
-    const patterns = [
-      // نمط: سعر مبيع USD — رقم من 5 إلى 7 خانات
-      /مبيع[\s\S]{0,200}?([\d,]{4,8})/i,
-      /sell[\s\S]{0,200}?([\d,]{4,8})/i,
-      // نمط: الرقم قبل مبيع
-      /([\d,]{4,8})[\s\S]{0,100}?مبيع/i,
-      // نمط عام: رقم كبير بجانب USD في الصفحة
-      /USD[\s\S]{0,300}?([\d,]{4,8})/i,
-      /دولار[\s\S]{0,300}?([\d,]{4,8})/i,
-    ];
-
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match?.[1]) {
-        const cleaned = match[1].replace(/,/g, "");
-        const num = parseFloat(cleaned);
-        // سعر الدولار بالليرة السورية يجب أن يكون في نطاق معقول
-        if (num >= 5000 && num <= 50000) {
-          return parseFloat((num / 100).toFixed(2));
-        }
-      }
-    }
-    return null;
-  };
-
-  // دالة مساعدة: جلب السعر بالـ scraping من صفحة sp-today وتخزينه في DB
-  const fetchSypRateFromSpToday = async (): Promise<number | null> => {
-    const fetchHeaders = {
-      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "ar,en;q=0.9",
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      "Cache-Control": "no-cache",
-    };
-
-    const saveRate = async (rate: number, source: string): Promise<void> => {
-      await supabase.from("settings").upsert(
-        { key: "syp_rate", value: String(rate) },
-        { onConflict: "key" }
-      );
-      console.log(`[SYP-RATE] ✅ Fetched from ${source}: 1$ = ${rate} ل.س`);
-    };
-
-    // ── المحاولة الأولى: صفحة الدولار الأمريكي ──
-    try {
-      const res1 = await fetch("https://sp-today.com/currency/us-dollar", {
-        headers: fetchHeaders,
-        signal: AbortSignal.timeout(12000),
-      });
-      if (res1.ok) {
-        const html1 = await res1.text();
-        const rate1 = parseSellRateFromHtml(html1);
-        if (rate1 && rate1 > 0) {
-          await saveRate(rate1, "sp-today/us-dollar");
-          return rate1;
-        }
-        console.warn("[SYP-RATE] ⚠️ sp-today/us-dollar: HTML fetched but rate not found, trying homepage...");
-      }
-    } catch (e: any) {
-      console.warn(`[SYP-RATE] ⚠️ sp-today/us-dollar fetch error: ${e.message}`);
-    }
-
-    // ── المحاولة الثانية: الصفحة الرئيسية ──
-    try {
-      const res2 = await fetch("https://sp-today.com", {
-        headers: fetchHeaders,
-        signal: AbortSignal.timeout(12000),
-      });
-      if (res2.ok) {
-        const html2 = await res2.text();
-        const rate2 = parseSellRateFromHtml(html2);
-        if (rate2 && rate2 > 0) {
-          await saveRate(rate2, "sp-today/homepage");
-          return rate2;
-        }
-        console.warn("[SYP-RATE] ⚠️ sp-today homepage: HTML fetched but rate not found");
-      }
-    } catch (e: any) {
-      console.warn(`[SYP-RATE] ⚠️ sp-today homepage fetch error: ${e.message}`);
-    }
-
-    console.warn("[SYP-RATE] ⚠️ All scraping attempts failed — DB value retained");
-    return null;
-  };
-
-  // GET /api/syp-rate — يُرجع السعر المحفوظ في DB فوراً
+  // GET /api/syp-rate — يُرجع السعر المحفوظ في DB
   app.get("/api/syp-rate", async (req, res) => {
     try {
       const { data } = await supabase.from("settings").select("value").eq("key", "syp_rate").single();
@@ -4412,56 +4319,24 @@ ${responseText}`);
     }
   });
 
-  // GET /api/syp-rate/fetch — proxy: يجلب السعر الحي من sp-today ويحفظه في DB
-  // المتصفح يستدعي هذا المسار بدلاً من استدعاء sp-today مباشرة (يتجنب CORS)
-  app.get("/api/syp-rate/fetch", async (req, res) => {
-    try {
-      const liveRate = await fetchSypRateFromSpToday();
-      if (liveRate !== null) {
-        return res.json({ rate: liveRate, source: "sp-today" });
-      }
-      // fallback: نرجع السعر المحفوظ في DB
-      const { data: dbRate } = await supabase.from("settings").select("value").eq("key", "syp_rate").single();
-      const fallbackRate = dbRate?.value ? parseFloat(dbRate.value) : null;
-      res.json({ rate: fallbackRate, source: "db" });
-    } catch (e: any) {
-      try {
-        const { data: dbRate } = await supabase.from("settings").select("value").eq("key", "syp_rate").single();
-        res.json({ rate: dbRate?.value ? parseFloat(dbRate.value) : null, source: "db" });
-      } catch {
-        res.json({ rate: null, source: "db" });
-      }
-    }
-  });
-
-  // POST /api/syp-rate — استقبال سعر من الواجهة وحفظه في DB
-  app.post("/api/syp-rate", async (req, res) => {
+  // POST /api/admin/syp-rate — حفظ سعر الصرف يدوياً من لوحة التحكم
+  app.post("/api/admin/syp-rate", async (req, res) => {
     try {
       const { rate } = req.body;
       if (!rate || isNaN(Number(rate)) || Number(rate) <= 0) {
-        return res.status(400).json({ error: "Invalid rate value" });
+        return res.status(400).json({ error: "قيمة سعر الصرف غير صالحة" });
       }
       const parsedRate = parseFloat(Number(rate).toFixed(2));
       await supabase.from("settings").upsert(
         { key: "syp_rate", value: String(parsedRate) },
         { onConflict: "key" }
       );
-      console.log(`[SYP-RATE] ✅ Updated from frontend: 1$ = ${parsedRate} ل.س`);
+      console.log(`[SYP-RATE] ✅ Updated manually by admin: 1$ = ${parsedRate} ل.س`);
       res.json({ ok: true, rate: parsedRate });
     } catch (e: any) {
       safeError(res, e);
     }
   });
-
-  // تحديث السعر تلقائياً من السيرفر كل 15 دقيقة
-  const autoRefreshSypRate = async () => {
-    const rate = await fetchSypRateFromSpToday();
-    if (rate) console.log(`[SYP-RATE][AUTO] ✅ Updated: 1$ = ${rate} ل.س`);
-    else console.warn("[SYP-RATE][AUTO] ⚠️ Could not fetch live rate — DB value retained");
-  };
-  setTimeout(autoRefreshSypRate, 5000); // جلب أولي بعد 5 ثوانٍ من بدء التشغيل
-  setInterval(autoRefreshSypRate, 15 * 60 * 1000); // كل 15 دقيقة
-  console.log("[SYP-RATE] Auto-refresh scheduled every 15 minutes");
 
   // 404 for API routes
   app.all("/api/*", (req, res) => {
