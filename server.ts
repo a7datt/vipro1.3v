@@ -4467,82 +4467,22 @@ ${responseText}`);
   console.log("[AUTO-REFRESH] Started — checking pending orders every 2 minutes");
 
   // =================== SYP EXCHANGE RATE — سعر صرف الليرة السورية ===================
-  // المتصفح يحاول الجلب المباشر من sp-today، وعند الفشل يستخدم proxy السيرفر
-  // السيرفر يحاول الجلب أيضاً ويخزن في DB — إذا حُجب يُرجع القيمة المحفوظة
-
-  // دالة مساعدة: جلب السعر من sp-today وتخزينه في DB
-  const fetchSypRateFromSpToday = async (): Promise<number | null> => {
-    try {
-      const spRes = await fetch("https://sse.sp-today.com/snapshot", {
-        headers: {
-          "Accept": "application/json",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Origin": "https://sp-today.com",
-          "Referer": "https://sp-today.com/",
-        },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!spRes.ok) return null;
-      const json = await spRes.json();
-      const buyRaw = json?.data?.currencies?.["USD:damascus"]?.buy;
-      if (!buyRaw || isNaN(Number(buyRaw))) return null;
-      const rate = parseFloat((Number(buyRaw) / 100).toFixed(2));
-      if (rate <= 0) return null;
-      await supabase.from("settings").upsert(
-        { key: "syp_rate", value: String(rate) },
-        { onConflict: "key" }
-      );
-      console.log(`[SYP-RATE] Fetched from sp-today: 1$ = ${rate} ل.س`);
-      return rate;
-    } catch (e: any) {
-      console.warn(`[SYP-RATE] sp-today fetch failed: ${e.message}`);
-      return null;
-    }
-  };
+  // ملاحظة: موقع sp-today يحجب الطلبات من السيرفر (403)
+  // الحل: الواجهة تجلب السعر مباشرة ثم ترسله للسيرفر ليحفظه في DB
+  // التحديث التلقائي يتم كل 30 دقيقة عبر الواجهة
 
   // API لجلب سعر الصرف الحالي من قاعدة البيانات
   app.get("/api/syp-rate", async (req, res) => {
     try {
-      const { data } = await supabase.from("settings").select("value").eq("key", "syp_rate").single();
+      const { data } = await supabase.from("settings").select("value,updated_at").eq("key", "syp_rate").single();
       const rate = data?.value ? parseFloat(data.value) : null;
-      res.json({ rate: rate || null });
+      res.json({ rate: rate || null, updated_at: (data as any)?.updated_at || null });
     } catch (e: any) {
       safeError(res, e);
     }
   });
 
-  // API proxy: يجلب السعر الحي من sp-today ويحفظه في DB
-  // يستخدمه المتصفح كـ fallback عند فشل الجلب المباشر بسبب CORS
-  app.get("/api/syp-rate/fetch", async (req, res) => {
-    try {
-      const liveRate = await fetchSypRateFromSpToday();
-      if (liveRate !== null) {
-        return res.json({ rate: liveRate, source: "sp-today" });
-      }
-      // fallback: نرجع السعر المحفوظ في DB
-      const { data: dbRate } = await supabase.from("settings").select("value").eq("key", "syp_rate").single();
-      const fallbackRate = dbRate?.value ? parseFloat(dbRate.value) : null;
-      res.json({ rate: fallbackRate, source: "db" });
-    } catch (e: any) {
-      try {
-        const { data: dbRate } = await supabase.from("settings").select("value").eq("key", "syp_rate").single();
-        res.json({ rate: dbRate?.value ? parseFloat(dbRate.value) : null, source: "db" });
-      } catch {
-        res.json({ rate: null, source: "db" });
-      }
-    }
-  });
-
-  // تحديث السعر تلقائياً من السيرفر كل ساعة
-  const autoRefreshSypRate = async () => {
-    const rate = await fetchSypRateFromSpToday();
-    if (rate) console.log(`[SYP-RATE][AUTO] Updated: 1$ = ${rate} ل.س`);
-  };
-  setTimeout(autoRefreshSypRate, 5000);
-  setInterval(autoRefreshSypRate, 60 * 60 * 1000);
-  console.log("[SYP-RATE] Auto-refresh scheduled every 60 minutes");
-
-  // API لاستقبال سعر الصرف من الواجهة وحفظه في قاعدة البيانات
+  // API لاستقبال سعر الصرف من الواجهة (بعد جلبه من sp-today) وحفظه في DB
   app.post("/api/syp-rate", async (req, res) => {
     try {
       const { rate } = req.body;
@@ -4554,12 +4494,59 @@ ${responseText}`);
         { key: "syp_rate", value: String(parsedRate) },
         { onConflict: "key" }
       );
-      console.log(`[SYP-RATE] Updated from frontend: 1$ = ${parsedRate} ل.س`);
+      console.log(`[SYP-RATE] Saved: 1$ = ${parsedRate} ل.س`);
       res.json({ ok: true, rate: parsedRate });
     } catch (e: any) {
       safeError(res, e);
     }
   });
+
+  // API fallback: يحاول الجلب من sp-today عبر السيرفر (قد يفشل بـ 403)
+  // الواجهة تستخدمه كـ fallback فقط إذا فشل الجلب المباشر
+  app.get("/api/syp-rate/fetch", async (req, res) => {
+    try {
+      // محاولة الجلب من sp-today (قد تفشل بـ 403)
+      const spRes = await fetch("https://sse.sp-today.com/snapshot", {
+        headers: {
+          "Accept": "application/json, text/event-stream, */*",
+          "Accept-Language": "ar,en;q=0.9",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          "Origin": "https://sp-today.com",
+          "Referer": "https://sp-today.com/",
+          "Cache-Control": "no-cache",
+        },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (spRes.ok) {
+        const json = await spRes.json();
+        const buyRaw = json?.data?.currencies?.["USD:damascus"]?.buy;
+        if (buyRaw && !isNaN(Number(buyRaw))) {
+          const rate = parseFloat((Number(buyRaw) / 100).toFixed(2));
+          if (rate > 0) {
+            await supabase.from("settings").upsert(
+              { key: "syp_rate", value: String(rate) },
+              { onConflict: "key" }
+            );
+            console.log(`[SYP-RATE][PROXY] Fetched: 1$ = ${rate} ل.س`);
+            return res.json({ rate, source: "sp-today" });
+          }
+        }
+      } else {
+        console.warn(`[SYP-RATE][PROXY] sp-today returned ${spRes.status} — using DB fallback`);
+      }
+    } catch (e: any) {
+      console.warn(`[SYP-RATE][PROXY] fetch failed: ${e.message}`);
+    }
+    // fallback: نرجع السعر المحفوظ في DB
+    try {
+      const { data: dbRate } = await supabase.from("settings").select("value").eq("key", "syp_rate").single();
+      res.json({ rate: dbRate?.value ? parseFloat(dbRate.value) : null, source: "db" });
+    } catch {
+      res.json({ rate: null, source: "db" });
+    }
+  });
+
+  console.log("[SYP-RATE] Exchange rate endpoints ready — auto-refresh handled by frontend every 30 minutes");
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
