@@ -2774,7 +2774,8 @@ export default function App() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
-    const finalPrice = user?.is_vip ? Number(prod.price) * 0.95 : Number(prod.price);
+    const vipDiscountPct = parseFloat(siteSettings?.find((s:any)=>s.key==="vip_discount")?.value || "5") / 100;
+    const finalPrice = user?.is_vip ? Number(prod.price) * (1 - vipDiscountPct) : Number(prod.price);
 
     const handleQuickOrder = async () => {
       if (!user) return;
@@ -2888,7 +2889,8 @@ export default function App() {
     const parsedQty = parseFloat(displayQty) || 0;
     const safeQty = Math.max(1, parsedQty || 1);
     const baseTotal = unitPrice * safeQty;
-    const finalPrice = user?.is_vip ? baseTotal * 0.95 : baseTotal;
+    const vipDiscountPct2 = parseFloat(siteSettings?.find((s:any)=>s.key==="vip_discount")?.value || "5") / 100;
+    const finalPrice = user?.is_vip ? baseTotal * (1 - vipDiscountPct2) : baseTotal;
 
     const handlePurchase = async () => {
       if (!user) return;
@@ -3163,7 +3165,7 @@ export default function App() {
                   <Star size={14} fill="currentColor" />
                   <span>خصم VIP ({siteSettings?.find((s:any)=>s.key==="vip_discount")?.value || "5"}%)</span>
                 </div>
-                <span className="font-bold">- {fmtPrice(baseTotal * 0.05)}</span>
+                <span className="font-bold">- {fmtPrice(baseTotal * vipDiscountPct2)}</span>
               </div>
             )}
             <div className="flex justify-between text-lg border-t border-gray-100 pt-3 mt-2">
