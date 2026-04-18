@@ -2595,7 +2595,7 @@ export default function App() {
                       <h4 className="font-bold text-gray-800">{prod.name}</h4>
                       <p className={`${theme.text} font-bold`}>
                         {prod.store_type === 'quantities'
-                          ? fmtPrice(parseFloat(prod.price_per_unit as any) || 0, 6) + " / وحدة"
+                          ? fmtPrice(parseFloat(prod.price as any) || 0, 6) + " / وحدة"
                           : fmtPrice(parseFloat(prod.price as any) || 0)}
                       </p>
                     </div>
@@ -2725,7 +2725,7 @@ export default function App() {
                   )}
                   <p className={`${isUnavailable ? "text-gray-400" : theme.text} font-bold text-sm mt-1`}>
                     {isQuantity
-                      ? fmtPrice(parseFloat(prod.price_per_unit) || 0, 6) + " / وحدة"
+                      ? fmtPrice(parseFloat(prod.price) || 0, 6) + " / وحدة"
                       : fmtPrice(parseFloat(prod.price) || 0)}
                   </p>
                 </div>
@@ -2882,9 +2882,7 @@ export default function App() {
     const setOrderResult = setCheckoutOrderResult;
 
     // حساب السعر بشكل صحيح
-    const unitPrice = (prod.store_type === 'quantities' || prod.store_type === 'external_api')
-      ? (parseFloat(String(prod.price_per_unit)) || parseFloat(String(prod.price)) || 0)
-      : (parseFloat(String(prod.price)) || 0);
+    const unitPrice = parseFloat(String(prod.price)) || 0;
 
     const parsedQty = parseFloat(displayQty) || 0;
     const safeQty = Math.max(1, parsedQty || 1);
@@ -7625,7 +7623,7 @@ const AdminElementsTab = ({categories, subcategories, subSubCategories, fetchCat
                 <AdminImageUpload label="صورة المنتج" currentUrl={editingItem.image_url||""} onUpload={url => setEditingItem({...editingItem,image_url:url})}/>
                 <select className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none" value={editingItem.store_type||"normal"} onChange={e => setEditingItem({...editingItem,store_type:e.target.value})}><option value="normal">متجر عادي</option><option value="quick_order">طلب سريع</option><option value="quantities">متجر الكميات</option><option value="numbers">متجر الأرقام</option><option value="external_api">شحن فوري (API خارجي)</option></select>
                 {(editingItem.store_type==='quantities'||editingItem.store_type==='external_api') ? (
-                  <div className="space-y-2 p-3 bg-gray-50 rounded-xl"><input type="number" placeholder="أقل كمية" className="w-full p-2 bg-white rounded-lg text-sm outline-none" value={editingItem.min_quantity||""} onChange={e => setEditingItem({...editingItem,min_quantity:e.target.value})}/><input type="number" placeholder="أكثر كمية" className="w-full p-2 bg-white rounded-lg text-sm outline-none" value={editingItem.max_quantity||""} onChange={e => setEditingItem({...editingItem,max_quantity:e.target.value})}/><input type="number" step="0.000001" placeholder="سعر الوحدة" className="w-full p-2 bg-white rounded-lg text-sm outline-none" value={editingItem.price_per_unit||""} onChange={e => setEditingItem({...editingItem,price_per_unit:e.target.value})}/>{editingItem.store_type==='external_api' && <input type="text" placeholder="معرف المنتج الخارجي" className="w-full p-2 bg-white rounded-lg text-sm outline-none border border-blue-100" value={editingItem.external_id||""} onChange={e => setEditingItem({...editingItem,external_id:e.target.value})}/>}</div>
+                  <div className="space-y-2 p-3 bg-gray-50 rounded-xl"><input type="number" placeholder="أقل كمية" className="w-full p-2 bg-white rounded-lg text-sm outline-none" value={editingItem.min_quantity||""} onChange={e => setEditingItem({...editingItem,min_quantity:e.target.value})}/><input type="number" placeholder="أكثر كمية" className="w-full p-2 bg-white rounded-lg text-sm outline-none" value={editingItem.max_quantity||""} onChange={e => setEditingItem({...editingItem,max_quantity:e.target.value})}/><div><p className="text-xs text-gray-500 mb-1">سعر التكلفة (API) $ / وحدة</p><input type="number" step="0.000001" placeholder="سعر التكلفة من API" className="w-full p-2 bg-white rounded-lg text-sm outline-none" value={editingItem.price_per_unit||""} onChange={e => setEditingItem({...editingItem,price_per_unit:e.target.value})}/></div><div><p className="text-xs text-gray-500 mb-1">سعر البيع للعميل $ / وحدة</p><input type="number" step="0.000001" placeholder="سعر البيع (مع الربح)" className="w-full p-2 bg-white rounded-lg text-sm outline-none border border-green-200" value={editingItem.price||""} onChange={e => setEditingItem({...editingItem,price:e.target.value})}/></div>{editingItem.store_type==='external_api' && <input type="text" placeholder="معرف المنتج الخارجي" className="w-full p-2 bg-white rounded-lg text-sm outline-none border border-blue-100" value={editingItem.external_id||""} onChange={e => setEditingItem({...editingItem,external_id:e.target.value})}/>}</div>
                 ) : <input type="number" step="0.01" placeholder="السعر $" className="w-full p-3 bg-gray-50 rounded-xl text-sm outline-none" value={editingItem.price||""} onChange={e => setEditingItem({...editingItem,price:e.target.value})}/>}
                 <div className="flex items-center gap-2"><input type="checkbox" checked={!!editingItem.requires_input} onChange={e => setEditingItem({...editingItem,requires_input:e.target.checked})} className="w-4 h-4 rounded"/><label className="text-xs font-bold text-gray-600">يتطلب بيانات إضافية</label></div>
               </div>
