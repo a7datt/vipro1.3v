@@ -3859,12 +3859,13 @@ ${responseText}`);
     }
   });
 
-  app.patch("/api/admin/products/:id/price", async (req, res) => {
+  app.patch("/api/admin/products/:id/price", adminAuth, async (req, res) => {
     try {
       const { price, price_per_unit } = req.body;
       const updateData: any = {};
-      if (price !== undefined) updateData.price = price;
-      if (price_per_unit !== undefined) updateData.price_per_unit = price_per_unit;
+      if (price !== undefined && price !== null && price !== "") updateData.price = parseFloat(price) || 0;
+      if (price_per_unit !== undefined && price_per_unit !== null && price_per_unit !== "") updateData.price_per_unit = parseFloat(price_per_unit) || 0;
+      if (Object.keys(updateData).length === 0) return res.status(400).json({ error: "لا يوجد قيمة للتحديث" });
       await supabase.from("products").update(updateData).eq("id", req.params.id);
       res.json({ success: true });
     } catch (e: any) {
@@ -3873,7 +3874,7 @@ ${responseText}`);
   });
 
   // Generic product update - updates any provided product fields
-  app.patch("/api/admin/products/:id", async (req, res) => {
+  app.patch("/api/admin/products/:id", adminAuth, async (req, res) => {
     try {
       const allowed = ["name","price","description","image_url","store_type","requires_input","min_quantity","max_quantity","available","external_id","price_per_unit","subcategory_id","sub_sub_category_id"];
       const payload = req.body || {};
