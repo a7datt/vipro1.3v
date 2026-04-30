@@ -701,7 +701,7 @@ async function startServer() {
   app.use(express.json({ limit: "2mb" }));
   app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 
-  const PORT = process.env.PORT || 3100
+  const PORT = 3100;
 
   // [NEW] helmet — طبقة headers أمنية إضافية من المكتبة الرسمية
   app.use(helmet({
